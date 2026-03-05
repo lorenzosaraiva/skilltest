@@ -1,0 +1,9 @@
+[
+  {
+    "prompt": "Validate this checklist for launching a backend service to production and summarize the top missing controls.\n\nChecklist:\n- [x] Run database migrations in staging\n- [ ] Define rollback plan and owner\n- [x] Configure error alerting in Sentry\n- [ ] Load test completed at expected peak RPS\n- [ ] Document on-call escalation process\n- [x] Backup and restore test completed",
+    "assertions": [
+      "Response should include pass, warn, or fail style categorization.",
+      "Response should include at least one remediation recommendation."
+    ]
+  }
+]

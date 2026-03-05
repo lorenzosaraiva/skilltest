@@ -1,0 +1,51 @@
+{
+  "name": "skilltest",
+  "version": "0.1.0",
+  "description": "The testing framework for Agent Skills. Lint, test triggering, and evaluate your SKILL.md files.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "skilltest": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "CLAUDE.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "tsc --noEmit",
+    "test": "node dist/index.js lint test-fixtures/sample-skill"
+  },
+  "keywords": [
+    "agent-skills",
+    "cli",
+    "evaluation",
+    "lint"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.39.0",
+    "chalk": "5.3.0",
+    "commander": "12.1.0",
+    "gray-matter": "4.0.3",
+    "js-yaml": "4.1.0",
+    "ora": "8.0.1",
+    "zod": "3.23.8"
+  },
+  "optionalDependencies": {
+    "openai": "4.71.1"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "4.0.9",
+    "@types/node": "22.10.2",
+    "tsup": "8.3.5",
+    "typescript": "5.7.2"
+  }
+}

@@ -13,6 +13,7 @@ Use this skill when a user asks to validate, score, or audit a markdown checklis
 1. Parse the checklist items and normalize them into a list.
 2. Evaluate each item against the user-provided criteria.
 3. Return a summary with pass/fail counts and concrete remediation steps.
+4. If command execution is needed, ask for approval first and prefer dry-run output before making changes.
 
 ## References
 

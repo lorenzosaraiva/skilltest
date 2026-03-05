@@ -4,6 +4,7 @@ import { LintContext } from "./context.js";
 import { runContentChecks } from "./content.js";
 import { runDisclosureChecks } from "./disclosure.js";
 import { runFrontmatterChecks } from "./frontmatter.js";
+import { runSecurityChecks } from "./security.js";
 import { runStructureChecks } from "./structure.js";
 import { LintIssue, LintReport, LintSummary } from "./types.js";
 
@@ -42,6 +43,7 @@ export async function runLinter(inputPath: string): Promise<LintReport> {
   issues.push(...runFrontmatterChecks(context));
   issues.push(...(await runStructureChecks(context)));
   issues.push(...runContentChecks(context));
+  issues.push(...runSecurityChecks(context));
   issues.push(...(await runDisclosureChecks(context)));
   issues.push(...runCompatibilityChecks(context));
 

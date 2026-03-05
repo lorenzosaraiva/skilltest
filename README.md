@@ -96,6 +96,11 @@ What it checks:
   - fails on obvious secret patterns
   - warns on empty/too-short body
   - warns on very short description
+- Security heuristics:
+  - fails on dangerous command patterns (destructive deletes, pipe-to-shell remote scripts)
+  - fails on obvious sensitive-data exfiltration instructions
+  - warns on privilege-escalation language (`sudo`, disable approvals, `require_escalated`)
+  - warns when shell instructions exist without explicit safety guardrails
 - Progressive disclosure:
   - warns if `SKILL.md` is large and no `references/` exists
   - validates references are relative and inside skill root

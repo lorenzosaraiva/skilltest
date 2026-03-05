@@ -89,6 +89,7 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 - Frontmatter checks: `src/core/linter/frontmatter.ts`
 - Structure checks: `src/core/linter/structure.ts`
 - Content heuristics: `src/core/linter/content.ts`
+- Security heuristics: `src/core/linter/security.ts`
 - Progressive disclosure: `src/core/linter/disclosure.ts`
 - Compatibility hints: `src/core/linter/compat.ts`
 - Trigger fake skill pool + scoring: `src/core/trigger-tester.ts`

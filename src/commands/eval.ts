@@ -19,13 +19,23 @@ const evalOptionsSchema = z.object({
   apiKey: z.string().optional()
 });
 
+const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929";
+const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+
+function resolveModel(provider: "anthropic" | "openai", model: string): string {
+  if (provider === "openai" && model === DEFAULT_ANTHROPIC_MODEL) {
+    return DEFAULT_OPENAI_MODEL;
+  }
+  return model;
+}
+
 export function registerEvalCommand(program: Command): void {
   program
     .command("eval")
     .description("Run end-to-end skill execution and quality evaluation.")
     .argument("<path-to-skill>", "Path to SKILL.md or skill directory")
     .option("--prompts <path>", "Path to eval prompts JSON")
-    .option("--model <model>", "Model to execute prompts", "claude-sonnet-4-5-20250929")
+    .option("--model <model>", "Model to execute prompts", DEFAULT_ANTHROPIC_MODEL)
     .option("--grader-model <model>", "Model used for grading (defaults to --model)")
     .option("--provider <provider>", "LLM provider: anthropic|openai", "anthropic")
     .option("--save-results <path>", "Save full evaluation results to JSON")
@@ -70,10 +80,12 @@ export function registerEvalCommand(program: Command): void {
         if (spinner) {
           spinner.text = "Running eval prompts and grading responses...";
         }
+        const model = resolveModel(options.provider, options.model);
+        const graderModel = options.graderModel ?? model;
         const result = await runEval(skill, {
           provider,
-          model: options.model,
-          graderModel: options.graderModel ?? options.model,
+          model,
+          graderModel,
           prompts
         });
 

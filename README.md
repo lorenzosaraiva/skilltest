@@ -230,7 +230,18 @@ skilltest trigger ./skill --api-key your-key
 Current provider status:
 
 - `anthropic`: implemented
-- `openai`: interface wired, command currently returns "OpenAI provider coming soon."
+- `openai`: implemented
+
+OpenAI quick example:
+
+```bash
+skilltest trigger ./path/to/skill --provider openai --model gpt-4.1-mini
+skilltest eval ./path/to/skill --provider openai --model gpt-4.1-mini
+```
+
+Note:
+
+- If you pass `--provider openai` and keep the Anthropic default model value, `skilltest` automatically switches to `gpt-4.1-mini`.
 
 ## CICD Integration
 

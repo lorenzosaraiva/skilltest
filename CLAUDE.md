@@ -79,7 +79,7 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 ## Gotchas
 
 - `trigger --num-queries` must be even for balanced positive/negative cases.
-- OpenAI provider is intentionally a stub in v1 and throws `"OpenAI provider coming soon."`.
+- OpenAI provider is implemented via dynamic import so Anthropic-only installs do not crash if optional deps are skipped.
 - Frontmatter is validated with both `gray-matter` and `js-yaml`; malformed YAML should fail fast.
 - Keep file references relative to skill root; out-of-root refs are lint failures.
 - If you modify reporter formatting, ensure JSON mode remains machine-safe.
@@ -97,7 +97,6 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 
 ## Future Work (Not Implemented Yet)
 
-- Real OpenAI provider implementation
 - Config file support (`.skilltestrc`)
 - Parallel execution
 - HTML reporting

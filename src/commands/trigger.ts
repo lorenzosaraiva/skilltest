@@ -19,12 +19,22 @@ const triggerOptionsSchema = z.object({
   apiKey: z.string().optional()
 });
 
+const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929";
+const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+
+function resolveModel(provider: "anthropic" | "openai", model: string): string {
+  if (provider === "openai" && model === DEFAULT_ANTHROPIC_MODEL) {
+    return DEFAULT_OPENAI_MODEL;
+  }
+  return model;
+}
+
 export function registerTriggerCommand(program: Command): void {
   program
     .command("trigger")
     .description("Evaluate whether a skill description triggers correctly.")
     .argument("<path-to-skill>", "Path to SKILL.md or skill directory")
-    .option("--model <model>", "Model to use", "claude-sonnet-4-5-20250929")
+    .option("--model <model>", "Model to use", DEFAULT_ANTHROPIC_MODEL)
     .option("--provider <provider>", "LLM provider: anthropic|openai", "anthropic")
     .option("--queries <path>", "Path to custom test queries JSON")
     .option("--num-queries <n>", "Number of auto-generated queries", (value) => Number.parseInt(value, 10), 20)
@@ -74,8 +84,9 @@ export function registerTriggerCommand(program: Command): void {
         if (spinner) {
           spinner.text = "Running trigger simulations...";
         }
+        const model = resolveModel(options.provider, options.model);
         const result = await runTriggerTest(skill, {
-          model: options.model,
+          model,
           provider,
           queries,
           numQueries: options.numQueries,

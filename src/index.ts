@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { registerLintCommand } from "./commands/lint.js";
 import { registerTriggerCommand } from "./commands/trigger.js";
 import { registerEvalCommand } from "./commands/eval.js";
+import { registerCheckCommand } from "./commands/check.js";
 
 function resolveVersion(): string {
   try {
@@ -31,6 +32,7 @@ export async function run(argv: string[]): Promise<void> {
   registerLintCommand(program);
   registerTriggerCommand(program);
   registerEvalCommand(program);
+  registerCheckCommand(program);
 
   await program.parseAsync(argv);
 }

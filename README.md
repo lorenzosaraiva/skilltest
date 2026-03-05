@@ -23,7 +23,7 @@ Agent Skills are quick to write but hard to validate before deployment:
 - You cannot easily measure trigger precision/recall.
 - You do not know whether outputs are good until users exercise the skill.
 
-`skilltest` closes this gap with one CLI and three modes.
+`skilltest` closes this gap with one CLI and four modes.
 
 ## Install
 
@@ -61,12 +61,18 @@ End-to-end eval:
 skilltest eval ./path/to/skill --provider anthropic --model claude-sonnet-4-5-20250929
 ```
 
+Run full quality gate:
+
+```bash
+skilltest check ./path/to/skill --provider anthropic --min-f1 0.8 --min-assert-pass-rate 0.9
+```
+
 Example lint summary:
 
 ```text
 skilltest lint
 target: ./test-fixtures/sample-skill
-summary: 25/25 checks passed, 0 warnings, 0 failures
+summary: 29/29 checks passed, 0 warnings, 0 failures
 ```
 
 ## Commands
@@ -153,6 +159,32 @@ Flags:
 - `--api-key <key>` explicit key override
 - `--verbose` show full model responses
 
+### `skilltest check <path-to-skill>`
+
+Runs `lint + trigger + eval` in one command and applies quality thresholds.
+
+Default behavior:
+
+1. Run lint.
+2. Stop before model calls if lint has failures.
+3. Run trigger and eval only when lint passes.
+4. Fail quality gate when either threshold is below target.
+
+Flags:
+
+- `--provider <anthropic|openai>` default: `anthropic`
+- `--model <model>` default: `claude-sonnet-4-5-20250929` (auto-switches to `gpt-4.1-mini` for `--provider openai` when unchanged)
+- `--grader-model <model>` default: same as resolved `--model`
+- `--api-key <key>` explicit key override
+- `--queries <path>` custom trigger queries JSON
+- `--num-queries <n>` default: `20` (must be even)
+- `--prompts <path>` custom eval prompts JSON
+- `--min-f1 <n>` default: `0.8`
+- `--min-assert-pass-rate <n>` default: `0.9`
+- `--save-results <path>` save combined check result JSON
+- `--continue-on-lint-fail` continue trigger/eval even if lint fails
+- `--verbose` include detailed trigger/eval sections
+
 ## Global Flags
 
 - `--help` show help
@@ -195,8 +227,8 @@ Eval prompts (`--prompts`):
 
 Exit codes:
 
-- `0`: success with no lint failures
-- `1`: lint failures present
+- `0`: success
+- `1`: quality gate failed (`lint`, `check` thresholds, or command-specific failure conditions)
 - `2`: runtime/config/API/parse error
 
 JSON mode examples:
@@ -205,6 +237,7 @@ JSON mode examples:
 skilltest lint ./skill --json
 skilltest trigger ./skill --json
 skilltest eval ./skill --json
+skilltest check ./skill --json
 ```
 
 ## API Keys
@@ -294,6 +327,7 @@ jobs:
       - run: npm run build
       - run: npx skilltest trigger path/to/skill --num-queries 20 --json
       - run: npx skilltest eval path/to/skill --prompts path/to/prompts.json --json
+      - run: npx skilltest check path/to/skill --min-f1 0.8 --min-assert-pass-rate 0.9 --json
 ```
 
 ## Local Development
@@ -311,6 +345,7 @@ Smoke tests:
 node dist/index.js lint test-fixtures/sample-skill/
 node dist/index.js trigger test-fixtures/sample-skill/ --num-queries 2
 node dist/index.js eval test-fixtures/sample-skill/ --prompts test-fixtures/eval-prompts.json
+node dist/index.js check test-fixtures/sample-skill/ --num-queries 2 --prompts test-fixtures/eval-prompts.json
 ```
 
 ## Release Checklist

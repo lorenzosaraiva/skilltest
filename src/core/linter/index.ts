@@ -7,6 +7,7 @@ import { runFrontmatterChecks } from "./frontmatter.js";
 import { runSecurityChecks } from "./security.js";
 import { runStructureChecks } from "./structure.js";
 import { LintIssue, LintReport, LintSummary } from "./types.js";
+import { LintFailOn } from "../../utils/config.js";
 
 function summarizeIssues(issues: LintIssue[]): LintSummary {
   const summary: LintSummary = {
@@ -31,7 +32,18 @@ function summarizeIssues(issues: LintIssue[]): LintSummary {
   return summary;
 }
 
-export async function runLinter(inputPath: string): Promise<LintReport> {
+export interface RunLinterOptions {
+  suppress?: string[];
+}
+
+export function lintFails(report: Pick<LintReport, "summary">, failOn: LintFailOn): boolean {
+  if (report.summary.failures > 0) {
+    return true;
+  }
+  return failOn === "warn" && report.summary.warnings > 0;
+}
+
+export async function runLinter(inputPath: string, options: RunLinterOptions = {}): Promise<LintReport> {
   const skill = await loadSkillFile(inputPath);
   const frontmatter = parseFrontmatter(skill.raw);
   const context: LintContext = {
@@ -47,10 +59,13 @@ export async function runLinter(inputPath: string): Promise<LintReport> {
   issues.push(...(await runDisclosureChecks(context)));
   issues.push(...runCompatibilityChecks(context));
 
+  const suppress = new Set(options.suppress ?? []);
+  const filteredIssues = issues.filter((issue) => !suppress.has(issue.checkId));
+
   return {
     target: inputPath,
-    issues,
-    summary: summarizeIssues(issues)
+    issues: filteredIssues,
+    summary: summarizeIssues(filteredIssues)
   };
 }
 

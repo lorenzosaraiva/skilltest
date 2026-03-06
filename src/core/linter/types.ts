@@ -2,6 +2,7 @@ export type CheckStatus = "pass" | "warn" | "fail";
 
 export interface LintIssue {
   id: string;
+  checkId: string;
   title: string;
   status: CheckStatus;
   message: string;

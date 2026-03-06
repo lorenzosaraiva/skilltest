@@ -1,8 +1,9 @@
 import { runEval, EvalPrompt, EvalResult } from "./eval-runner.js";
-import { runLinter, LintReport } from "./linter/index.js";
+import { lintFails, runLinter, LintReport } from "./linter/index.js";
 import { parseSkillStrict } from "./skill-parser.js";
 import { runTriggerTest, TriggerQuery, TriggerTestResult } from "./trigger-tester.js";
 import { LanguageModelProvider } from "../providers/types.js";
+import { LintFailOn } from "../utils/config.js";
 
 export interface CheckThresholds {
   minF1: number;
@@ -37,8 +38,12 @@ export interface RunCheckOptions {
   provider: LanguageModelProvider;
   model: string;
   graderModel: string;
+  lintFailOn: LintFailOn;
+  lintSuppress: string[];
   numQueries: number;
+  triggerSeed?: number;
   queries?: TriggerQuery[];
+  evalNumRuns: number;
   prompts?: EvalPrompt[];
   minF1: number;
   minAssertPassRate: number;
@@ -56,8 +61,8 @@ function calculateEvalAssertPassRate(result: EvalResult): number {
 
 export async function runCheck(inputPath: string, options: RunCheckOptions): Promise<CheckRunResult> {
   options.onStage?.("lint");
-  const lint = await runLinter(inputPath);
-  const lintPassed = lint.summary.failures === 0;
+  const lint = await runLinter(inputPath, { suppress: options.lintSuppress });
+  const lintPassed = !lintFails(lint, options.lintFailOn);
 
   let trigger: TriggerTestResult | null = null;
   let evalResult: EvalResult | null = null;
@@ -85,6 +90,7 @@ export async function runCheck(inputPath: string, options: RunCheckOptions): Pro
         model: options.model,
         queries: options.queries,
         numQueries: options.numQueries,
+        seed: options.triggerSeed,
         verbose: options.verbose
       });
 
@@ -93,6 +99,7 @@ export async function runCheck(inputPath: string, options: RunCheckOptions): Pro
         provider: options.provider,
         model: options.model,
         graderModel: options.graderModel,
+        numRuns: options.evalNumRuns,
         prompts: options.prompts
       });
     }

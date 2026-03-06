@@ -33,6 +33,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
   if (context.skill.lineCount > 500) {
     issues.push({
       id: "structure.skill-size",
+      checkId: "structure:file-size",
       title: "SKILL.md Size",
       status: "warn",
       message: `SKILL.md is ${context.skill.lineCount} lines (recommended max is 500).`,
@@ -41,6 +42,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
   } else {
     issues.push({
       id: "structure.skill-size",
+      checkId: "structure:file-size",
       title: "SKILL.md Size",
       status: "pass",
       message: `SKILL.md length is ${context.skill.lineCount} lines.`
@@ -58,6 +60,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
         oversizedWithoutToc += 1;
         issues.push({
           id: `structure.references.toc.${toPosixPath(path.relative(context.skill.skillRoot, file))}`,
+          checkId: "structure:toc",
           title: "Reference File Navigation",
           status: "warn",
           message: `${toPosixPath(path.relative(context.skill.skillRoot, file))} is ${lineCount} lines and has no table of contents.`,
@@ -69,6 +72,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
     if (oversizedWithoutToc === 0) {
       issues.push({
         id: "structure.references.toc",
+        checkId: "structure:toc",
         title: "Reference File Navigation",
         status: "pass",
         message: "No oversized reference files missing a table of contents."
@@ -77,6 +81,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
   } else {
     issues.push({
       id: "structure.references.toc",
+      checkId: "structure:toc",
       title: "Reference File Navigation",
       status: "pass",
       message: "No references/ directory found, so no long reference files to validate."
@@ -109,6 +114,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
     if (missing.length > 0) {
       issues.push({
         id: `structure.${category.key}.exists`,
+        checkId: "structure:references",
         title: category.title,
         status: "fail",
         message: `Missing referenced ${category.key} file(s): ${missing.join(", ")}`,
@@ -117,6 +123,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
     } else {
       issues.push({
         id: `structure.${category.key}.exists`,
+        checkId: "structure:references",
         title: category.title,
         status: "pass",
         message: `All referenced ${category.key} files exist.`
@@ -128,6 +135,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
   if (missingGeneric.length > 0) {
     issues.push({
       id: "structure.relative-links.broken",
+      checkId: "structure:references",
       title: "Relative Links",
       status: "fail",
       message: `Broken relative path reference(s): ${missingGeneric.join(", ")}`,
@@ -136,6 +144,7 @@ export async function runStructureChecks(context: LintContext): Promise<LintIssu
   } else {
     issues.push({
       id: "structure.relative-links.broken",
+      checkId: "structure:references",
       title: "Relative Links",
       status: "pass",
       message: "No broken generic relative file references were found."

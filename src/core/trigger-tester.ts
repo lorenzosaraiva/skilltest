@@ -61,17 +61,25 @@ const FAKE_SKILLS: Array<{ name: string; description: string }> = [
   { name: "prompt-tuner", description: "Improves prompts for reliability, formatting, and failure handling." }
 ];
 
-function shuffle<T>(values: T[]): T[] {
+function createSeededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+function shuffle<T>(values: T[], random: () => number = Math.random): T[] {
   const copy = [...values];
   for (let index = copy.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const swapIndex = Math.floor(random() * (index + 1));
     [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
   }
   return copy;
 }
 
-function sample<T>(values: T[], count: number): T[] {
-  return shuffle(values).slice(0, Math.max(0, Math.min(count, values.length)));
+function sample<T>(values: T[], count: number, random: () => number = Math.random): T[] {
+  return shuffle(values, random).slice(0, Math.max(0, Math.min(count, values.length)));
 }
 
 function parseJsonArrayFromModelOutput(raw: string): unknown[] {
@@ -210,10 +218,12 @@ export interface RunTriggerTestOptions {
   provider: LanguageModelProvider;
   queries?: TriggerQuery[];
   numQueries: number;
+  seed?: number;
   verbose?: boolean;
 }
 
 export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTestOptions): Promise<TriggerTestResult> {
+  const random = options.seed === undefined ? Math.random : createSeededRandom(options.seed);
   const queries =
     options.queries && options.queries.length > 0
       ? triggerQueryArraySchema.parse(options.queries)
@@ -223,15 +233,15 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
   const skillName = skill.frontmatter.name;
 
   for (const testQuery of queries) {
-    const fakeCount = 5 + Math.floor(Math.random() * 4);
-    const fakeSkills = sample(FAKE_SKILLS, fakeCount);
+    const fakeCount = 5 + Math.floor(random() * 4);
+    const fakeSkills = sample(FAKE_SKILLS, fakeCount, random);
     const allSkills = shuffle([
       ...fakeSkills,
       {
         name: skill.frontmatter.name,
         description: skill.frontmatter.description
       }
-    ]);
+    ], random);
 
     const skillListText = allSkills.map((entry) => `- ${entry.name}: ${entry.description}`).join("\n");
 

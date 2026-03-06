@@ -53,6 +53,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   if (context.skill.lineCount > 200 && !(await pathExists(referencesDir))) {
     issues.push({
       id: "disclosure.skill-split",
+      checkId: "disclosure:progressive-disclosure",
       title: "Progressive Disclosure",
       status: "warn",
       message: "SKILL.md exceeds 200 lines and no references/ directory is present.",
@@ -61,6 +62,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   } else {
     issues.push({
       id: "disclosure.skill-split",
+      checkId: "disclosure:progressive-disclosure",
       title: "Progressive Disclosure",
       status: "pass",
       message: "Top-level file length and references/ usage look reasonable."
@@ -90,6 +92,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   if (nonRelativeOrEscaping.length > 0) {
     issues.push({
       id: "disclosure.relative-path-root",
+      checkId: "disclosure:path-scope",
       title: "Reference Path Scope",
       status: "fail",
       message: `Found non-relative or out-of-root references: ${nonRelativeOrEscaping.join(", ")}`,
@@ -98,6 +101,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   } else {
     issues.push({
       id: "disclosure.relative-path-root",
+      checkId: "disclosure:path-scope",
       title: "Reference Path Scope",
       status: "pass",
       message: "All detected file references are relative and scoped to skill root."
@@ -108,6 +112,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   if (chainDepth > 1) {
     issues.push({
       id: "disclosure.reference-depth",
+      checkId: "disclosure:reference-depth",
       title: "Reference Chain Depth",
       status: "warn",
       message: "Deep reference chains detected (>1 level).",
@@ -116,6 +121,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   } else {
     issues.push({
       id: "disclosure.reference-depth",
+      checkId: "disclosure:reference-depth",
       title: "Reference Chain Depth",
       status: "pass",
       message: "Reference depth is shallow and easy to navigate."
@@ -126,6 +132,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   if (normalizedReferences.some((item) => item.includes("../"))) {
     issues.push({
       id: "disclosure.parent-traversal",
+      checkId: "disclosure:parent-traversal",
       title: "Parent Traversal",
       status: "warn",
       message: "References include parent-directory traversal (../).",
@@ -134,6 +141,7 @@ export async function runDisclosureChecks(context: LintContext): Promise<LintIss
   } else {
     issues.push({
       id: "disclosure.parent-traversal",
+      checkId: "disclosure:parent-traversal",
       title: "Parent Traversal",
       status: "pass",
       message: "No parent-directory traversal references detected."

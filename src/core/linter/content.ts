@@ -30,6 +30,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (!/^#{1,6}\s+\S+/m.test(body)) {
     issues.push({
       id: "content.headers",
+      checkId: "content:headers",
       title: "Section Headers",
       status: "warn",
       message: "No markdown headers found in SKILL.md body.",
@@ -38,6 +39,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "content.headers",
+      checkId: "content:headers",
       title: "Section Headers",
       status: "pass",
       message: "SKILL.md contains markdown section headers."
@@ -48,6 +50,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (!hasExamples) {
     issues.push({
       id: "content.examples",
+      checkId: "content:examples",
       title: "Examples",
       status: "warn",
       message: "No examples detected in SKILL.md body.",
@@ -56,6 +59,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "content.examples",
+      checkId: "content:examples",
       title: "Examples",
       status: "pass",
       message: "Examples were detected in SKILL.md."
@@ -66,6 +70,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (vagueMatches.length > 0) {
     issues.push({
       id: "content.vagueness",
+      checkId: "content:vagueness",
       title: "Instruction Specificity",
       status: "warn",
       message: "Potentially vague instruction phrases detected.",
@@ -74,6 +79,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "content.vagueness",
+      checkId: "content:vagueness",
       title: "Instruction Specificity",
       status: "pass",
       message: "No obvious vague placeholder phrasing found."
@@ -83,6 +89,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (context.frontmatter.rawFrontmatter && /[<>]/.test(context.frontmatter.rawFrontmatter)) {
     issues.push({
       id: "content.frontmatter-angle-brackets",
+      checkId: "content:angle-brackets",
       title: "Frontmatter Angle Brackets",
       status: "warn",
       message: "Frontmatter contains angle bracket characters (< or >), which can be misinterpreted in some agents.",
@@ -91,6 +98,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "content.frontmatter-angle-brackets",
+      checkId: "content:angle-brackets",
       title: "Frontmatter Angle Brackets",
       status: "pass",
       message: "No angle bracket tokens detected in frontmatter."
@@ -106,6 +114,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (secretHits.size > 0) {
     issues.push({
       id: "content.secrets",
+      checkId: "content:secrets",
       title: "Hardcoded Secrets",
       status: "fail",
       message: `Potential secrets detected (${Array.from(secretHits).join(", ")}).`,
@@ -114,6 +123,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "content.secrets",
+      checkId: "content:secrets",
       title: "Hardcoded Secrets",
       status: "pass",
       message: "No obvious API keys or secrets patterns were detected."
@@ -123,6 +133,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (bodyLines.length < 10) {
     issues.push({
       id: "content.body-length",
+      checkId: "content:body-length",
       title: "Body Completeness",
       status: "warn",
       message: `SKILL.md body has only ${bodyLines.length} non-empty lines.`,
@@ -131,6 +142,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "content.body-length",
+      checkId: "content:body-length",
       title: "Body Completeness",
       status: "pass",
       message: `SKILL.md body has ${bodyLines.length} non-empty lines.`
@@ -140,6 +152,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   if (description && description.length < 50) {
     issues.push({
       id: "content.description-length",
+      checkId: "content:description-length",
       title: "Description Specificity",
       status: "warn",
       message: `Description length is ${description.length} characters, which may be too vague for reliable triggering.`,
@@ -148,6 +161,7 @@ export function runContentChecks(context: LintContext): LintIssue[] {
   } else if (description) {
     issues.push({
       id: "content.description-length",
+      checkId: "content:description-length",
       title: "Description Specificity",
       status: "pass",
       message: "Description length is sufficient for triggerability heuristics."

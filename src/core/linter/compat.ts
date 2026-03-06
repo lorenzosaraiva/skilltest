@@ -13,6 +13,7 @@ export function runCompatibilityChecks(context: LintContext): LintIssue[] {
   if (hasAllowedTools) {
     issues.push({
       id: "compat.allowed-tools",
+      checkId: "compat:frontmatter",
       title: "Platform-Specific Frontmatter",
       status: "warn",
       message: "Frontmatter includes allowed-tools, which is typically Claude-specific.",
@@ -21,6 +22,7 @@ export function runCompatibilityChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "compat.allowed-tools",
+      checkId: "compat:frontmatter",
       title: "Platform-Specific Frontmatter",
       status: "pass",
       message: "No known provider-specific frontmatter keys detected."
@@ -31,6 +33,7 @@ export function runCompatibilityChecks(context: LintContext): LintIssue[] {
     const platform = mentionsClaudeOnly ? "Claude" : "Codex";
     issues.push({
       id: "compat.provider-phrasing",
+      checkId: "compat:provider-language",
       title: "Provider-Specific Language",
       status: "warn",
       message: `Skill body appears tuned to ${platform}-specific behavior.`,
@@ -39,6 +42,7 @@ export function runCompatibilityChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "compat.provider-phrasing",
+      checkId: "compat:provider-language",
       title: "Provider-Specific Language",
       status: "pass",
       message: "Skill body appears provider-neutral."
@@ -51,6 +55,7 @@ export function runCompatibilityChecks(context: LintContext): LintIssue[] {
 
   issues.push({
     id: "compat.summary",
+    checkId: "compat:summary",
     title: "Compatibility Hint",
     status: hasAllowedTools || mentionsClaudeOnly || mentionsCodexOnly ? "warn" : "pass",
     message: likelyCompatibility

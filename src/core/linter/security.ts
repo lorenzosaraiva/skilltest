@@ -78,6 +78,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   if (dangerousCommandHits.length > 0) {
     issues.push({
       id: "security.dangerous-command-patterns",
+      checkId: "security:dangerous-commands",
       title: "Dangerous Command Patterns",
       status: "fail",
       message: `Potentially dangerous command instruction patterns found: ${dangerousCommandHits.join(", ")}.`,
@@ -86,6 +87,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "security.dangerous-command-patterns",
+      checkId: "security:dangerous-commands",
       title: "Dangerous Command Patterns",
       status: "pass",
       message: "No high-risk destructive or direct pipe-to-shell patterns detected."
@@ -96,6 +98,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   if (exfiltrationHits.length > 0) {
     issues.push({
       id: "security.exfiltration-patterns",
+      checkId: "security:exfiltration",
       title: "Sensitive Data Exfiltration",
       status: "fail",
       message: `Possible sensitive data exfiltration patterns found: ${exfiltrationHits.join(", ")}.`,
@@ -104,6 +107,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "security.exfiltration-patterns",
+      checkId: "security:exfiltration",
       title: "Sensitive Data Exfiltration",
       status: "pass",
       message: "No obvious credential access/exfiltration instructions detected."
@@ -114,6 +118,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   if (escalationHits.length > 0) {
     issues.push({
       id: "security.privilege-escalation",
+      checkId: "security:privilege-escalation",
       title: "Privilege Escalation Language",
       status: "warn",
       message: `Potentially risky privilege/execution language detected: ${escalationHits.join(", ")}.`,
@@ -122,6 +127,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "security.privilege-escalation",
+      checkId: "security:privilege-escalation",
       title: "Privilege Escalation Language",
       status: "pass",
       message: "No obvious privilege-escalation language detected."
@@ -132,6 +138,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   if (hasShellActivity && !SAFETY_GUARDRAIL_PATTERN.test(skillText)) {
     issues.push({
       id: "security.safety-guardrails",
+      checkId: "security:missing-guardrails",
       title: "Execution Safety Guardrails",
       status: "warn",
       message: "Shell/tool execution is present, but no explicit safety guardrails were detected.",
@@ -140,6 +147,7 @@ export function runSecurityChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "security.safety-guardrails",
+      checkId: "security:missing-guardrails",
       title: "Execution Safety Guardrails",
       status: "pass",
       message: hasShellActivity

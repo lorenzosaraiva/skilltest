@@ -95,6 +95,7 @@ export interface RunEvalOptions {
   provider: LanguageModelProvider;
   model: string;
   graderModel: string;
+  numRuns: number;
   prompts?: EvalPrompt[];
 }
 
@@ -102,7 +103,7 @@ export async function runEval(skill: ParsedSkill, options: RunEvalOptions): Prom
   const prompts =
     options.prompts && options.prompts.length > 0
       ? evalPromptArraySchema.parse(options.prompts)
-      : await generatePrompts(skill, options.provider, options.model, 5);
+      : await generatePrompts(skill, options.provider, options.model, options.numRuns);
 
   const results: EvalPromptResult[] = [];
 

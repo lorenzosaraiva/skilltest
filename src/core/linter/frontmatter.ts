@@ -27,6 +27,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   if (!context.frontmatter.hasFrontmatter) {
     issues.push({
       id: "frontmatter.exists",
+      checkId: "frontmatter:exists",
       title: "Frontmatter Presence",
       status: "fail",
       message: "SKILL.md is missing YAML frontmatter delimited by --- blocks.",
@@ -38,6 +39,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   if (context.frontmatter.error) {
     issues.push({
       id: "frontmatter.valid-yaml",
+      checkId: "frontmatter:yaml",
       title: "Frontmatter YAML",
       status: "fail",
       message: `Frontmatter is not valid YAML: ${context.frontmatter.error}`,
@@ -48,6 +50,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
 
   issues.push({
     id: "frontmatter.valid-yaml",
+    checkId: "frontmatter:yaml",
     title: "Frontmatter YAML",
     status: "pass",
     message: "Frontmatter exists and parses correctly."
@@ -58,6 +61,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   if (!name) {
     issues.push({
       id: "frontmatter.name.required",
+      checkId: "frontmatter:name",
       title: "Frontmatter Name",
       status: "fail",
       message: "Missing required frontmatter field: name.",
@@ -66,6 +70,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else if (name.length > 64) {
     issues.push({
       id: "frontmatter.name.length",
+      checkId: "frontmatter:name",
       title: "Frontmatter Name Length",
       status: "fail",
       message: `name is too long (${name.length} chars, max 64).`,
@@ -74,6 +79,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else if (!SKILL_NAME_REGEX.test(name)) {
     issues.push({
       id: "frontmatter.name.format",
+      checkId: "frontmatter:name",
       title: "Frontmatter Name Format",
       status: "fail",
       message: "name must be lowercase alphanumeric with single hyphen separators only.",
@@ -82,6 +88,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "frontmatter.name.valid",
+      checkId: "frontmatter:name",
       title: "Frontmatter Name",
       status: "pass",
       message: "name is present and follows naming conventions."
@@ -92,6 +99,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   if (!description || description.trim() === "") {
     issues.push({
       id: "frontmatter.description.required",
+      checkId: "frontmatter:description",
       title: "Frontmatter Description",
       status: "fail",
       message: "Missing required frontmatter field: description.",
@@ -100,6 +108,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else if (description.length > 1024) {
     issues.push({
       id: "frontmatter.description.length",
+      checkId: "frontmatter:description",
       title: "Frontmatter Description Length",
       status: "fail",
       message: `description is too long (${description.length} chars, max 1024).`,
@@ -108,6 +117,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "frontmatter.description.valid",
+      checkId: "frontmatter:description",
       title: "Frontmatter Description",
       status: "pass",
       message: "description is present and within allowed length."
@@ -118,6 +128,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   if (!license || license.trim() === "") {
     issues.push({
       id: "frontmatter.license.recommended",
+      checkId: "frontmatter:license",
       title: "Frontmatter License",
       status: "warn",
       message: "No license field found in frontmatter.",
@@ -126,6 +137,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else {
     issues.push({
       id: "frontmatter.license.present",
+      checkId: "frontmatter:license",
       title: "Frontmatter License",
       status: "pass",
       message: "license field is present."
@@ -135,6 +147,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   if (description && description.trim() !== "" && !descriptionLooksActionable(description)) {
     issues.push({
       id: "frontmatter.description.triggerability",
+      checkId: "frontmatter:triggerability",
       title: "Description Trigger Clarity",
       status: "warn",
       message: "Description should explain both what the skill does and when it should be used.",
@@ -143,6 +156,7 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
   } else if (description) {
     issues.push({
       id: "frontmatter.description.triggerability",
+      checkId: "frontmatter:triggerability",
       title: "Description Trigger Clarity",
       status: "pass",
       message: "Description appears to cover both capability and usage context."

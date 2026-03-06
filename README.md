@@ -128,12 +128,17 @@ Flow:
    - realistic fake skills
 4. Computes TP, TN, FP, FN, precision, recall, F1.
 
+For reproducible fake-skill sampling, pass `--seed <number>`. When a seed is used,
+terminal and JSON output include it so the run can be repeated exactly. If you use
+`.skilltestrc`, `trigger.seed` sets the default and the CLI flag overrides it.
+
 Flags:
 
 - `--model <model>` default: `claude-sonnet-4-5-20250929`
 - `--provider <anthropic|openai>` default: `anthropic`
 - `--queries <path>` use custom queries JSON
 - `--num-queries <n>` default: `20` (must be even)
+- `--seed <number>` RNG seed for reproducible fake-skill sampling
 - `--save-queries <path>` save generated query set
 - `--api-key <key>` explicit key override
 - `--verbose` show full model decision text
@@ -178,6 +183,7 @@ Flags:
 - `--api-key <key>` explicit key override
 - `--queries <path>` custom trigger queries JSON
 - `--num-queries <n>` default: `20` (must be even)
+- `--seed <number>` RNG seed for reproducible trigger sampling
 - `--prompts <path>` custom eval prompts JSON
 - `--min-f1 <n>` default: `0.8`
 - `--min-assert-pass-rate <n>` default: `0.9`
@@ -238,6 +244,12 @@ skilltest lint ./skill --json
 skilltest trigger ./skill --json
 skilltest eval ./skill --json
 skilltest check ./skill --json
+```
+
+Seeded trigger example:
+
+```bash
+skilltest trigger ./skill --seed 123
 ```
 
 ## API Keys
@@ -344,6 +356,7 @@ Smoke tests:
 ```bash
 node dist/index.js lint test-fixtures/sample-skill/
 node dist/index.js trigger test-fixtures/sample-skill/ --num-queries 2
+node dist/index.js trigger test-fixtures/sample-skill/ --queries path/to/queries.json --seed 123
 node dist/index.js eval test-fixtures/sample-skill/ --prompts test-fixtures/eval-prompts.json
 node dist/index.js check test-fixtures/sample-skill/ --num-queries 2 --prompts test-fixtures/eval-prompts.json
 ```

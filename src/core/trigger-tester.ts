@@ -30,6 +30,7 @@ export interface TriggerTestResult {
   skillName: string;
   model: string;
   provider: string;
+  seed?: number;
   queries: TriggerQuery[];
   cases: TriggerTestCaseResult[];
   metrics: TriggerMetrics;
@@ -61,25 +62,31 @@ const FAKE_SKILLS: Array<{ name: string; description: string }> = [
   { name: "prompt-tuner", description: "Improves prompts for reliability, formatting, and failure handling." }
 ];
 
-function createSeededRandom(seed: number): () => number {
-  let state = seed >>> 0;
+function mulberry32(seed: number): () => number {
   return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0x100000000;
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-function shuffle<T>(values: T[], random: () => number = Math.random): T[] {
+function createRng(seed?: number): () => number {
+  return seed !== undefined ? mulberry32(seed) : Math.random;
+}
+
+function shuffle<T>(values: T[], rng: () => number): T[] {
   const copy = [...values];
   for (let index = copy.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
+    const swapIndex = Math.floor(rng() * (index + 1));
     [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
   }
   return copy;
 }
 
-function sample<T>(values: T[], count: number, random: () => number = Math.random): T[] {
-  return shuffle(values, random).slice(0, Math.max(0, Math.min(count, values.length)));
+function sample<T>(values: T[], count: number, rng: () => number): T[] {
+  return shuffle(values, rng).slice(0, Math.max(0, Math.min(count, values.length)));
 }
 
 function parseJsonArrayFromModelOutput(raw: string): unknown[] {
@@ -223,7 +230,7 @@ export interface RunTriggerTestOptions {
 }
 
 export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTestOptions): Promise<TriggerTestResult> {
-  const random = options.seed === undefined ? Math.random : createSeededRandom(options.seed);
+  const rng = createRng(options.seed);
   const queries =
     options.queries && options.queries.length > 0
       ? triggerQueryArraySchema.parse(options.queries)
@@ -233,15 +240,15 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
   const skillName = skill.frontmatter.name;
 
   for (const testQuery of queries) {
-    const fakeCount = 5 + Math.floor(random() * 4);
-    const fakeSkills = sample(FAKE_SKILLS, fakeCount, random);
+    const fakeCount = 5 + Math.floor(rng() * 5);
+    const fakeSkills = sample(FAKE_SKILLS, fakeCount, rng);
     const allSkills = shuffle([
       ...fakeSkills,
       {
         name: skill.frontmatter.name,
         description: skill.frontmatter.description
       }
-    ], random);
+    ], rng);
 
     const skillListText = allSkills.map((entry) => `- ${entry.name}: ${entry.description}`).join("\n");
 
@@ -277,6 +284,7 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
     skillName,
     model: options.model,
     provider: options.provider.name,
+    seed: options.seed,
     queries,
     cases: results,
     metrics,

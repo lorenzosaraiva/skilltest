@@ -1,10 +1,13 @@
 import { LintContext } from "./context.js";
-import { LintIssue } from "./types.js";
+import { parseZones, Zone, ZoneType } from "./markdown-zones.js";
+import { LintIssue, LintSkippedPattern } from "./types.js";
 
 interface SecurityPattern {
   label: string;
   regex: RegExp;
 }
+
+interface PatternOccurrence extends LintSkippedPattern {}
 
 const DANGEROUS_COMMAND_PATTERNS: SecurityPattern[] = [
   {
@@ -60,100 +63,195 @@ const SHELL_ACTIVITY_PATTERNS: RegExp[] = [
 const SAFETY_GUARDRAIL_PATTERN =
   /\b(?:ask before|confirm|approval|dry[- ]run|sandbox|least privilege|redact|never expose|do not reveal)\b/i;
 
-function collectMatches(content: string, patterns: SecurityPattern[]): string[] {
-  const matches: string[] = [];
-  for (const pattern of patterns) {
-    if (pattern.regex.test(content)) {
-      matches.push(pattern.label);
+function buildOccurrence(zone: Zone, pattern: SecurityPattern): PatternOccurrence {
+  return {
+    label: pattern.label,
+    zoneType: zone.type,
+    startLine: zone.startLine,
+    endLine: zone.endLine
+  };
+}
+
+function collectZoneAwareMatches(zones: Zone[], patterns: SecurityPattern[]): { flagged: PatternOccurrence[]; skipped: PatternOccurrence[] } {
+  const flagged: PatternOccurrence[] = [];
+  const skipped: PatternOccurrence[] = [];
+
+  for (const zone of zones) {
+    for (const pattern of patterns) {
+      if (!pattern.regex.test(zone.content)) {
+        continue;
+      }
+
+      const occurrence = buildOccurrence(zone, pattern);
+      if (zone.type === "prose") {
+        flagged.push(occurrence);
+      } else {
+        skipped.push(occurrence);
+      }
     }
   }
-  return matches;
+
+  return { flagged, skipped };
+}
+
+function uniqueLabels(matches: PatternOccurrence[]): string[] {
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const match of matches) {
+    if (seen.has(match.label)) {
+      continue;
+    }
+    seen.add(match.label);
+    labels.push(match.label);
+  }
+  return labels;
+}
+
+function summarizeLineRange(matches: PatternOccurrence[]): Pick<LintIssue, "startLine" | "endLine"> {
+  if (matches.length === 0) {
+    return {};
+  }
+
+  return {
+    startLine: Math.min(...matches.map((match) => match.startLine)),
+    endLine: Math.max(...matches.map((match) => match.endLine))
+  };
+}
+
+function buildSkippedPatterns(matches: PatternOccurrence[]): LintSkippedPattern[] | undefined {
+  if (matches.length === 0) {
+    return undefined;
+  }
+  return matches.map((match) => ({
+    label: match.label,
+    zoneType: match.zoneType,
+    startLine: match.startLine,
+    endLine: match.endLine
+  }));
+}
+
+function isSuppressed(context: LintContext, checkId: string): boolean {
+  return context.suppressedCheckIds.has(checkId);
+}
+
+function runZoneAwareSecurityCheck(
+  context: LintContext,
+  zones: Zone[],
+  options: {
+    id: string;
+    checkId: string;
+    title: string;
+    statusOnMatch: "fail" | "warn";
+    patterns: SecurityPattern[];
+    matchMessagePrefix: string;
+    passMessage: string;
+    suggestion: string;
+  }
+): LintIssue | null {
+  if (isSuppressed(context, options.checkId)) {
+    return null;
+  }
+
+  const matches = collectZoneAwareMatches(zones, options.patterns);
+  const labels = uniqueLabels(matches.flagged);
+  const skippedPatterns = buildSkippedPatterns(matches.skipped);
+
+  if (labels.length > 0) {
+    return {
+      id: options.id,
+      checkId: options.checkId,
+      title: options.title,
+      status: options.statusOnMatch,
+      message: `${options.matchMessagePrefix}: ${labels.join(", ")}.`,
+      suggestion: options.suggestion,
+      ...summarizeLineRange(matches.flagged),
+      skippedPatterns
+    };
+  }
+
+  return {
+    id: options.id,
+    checkId: options.checkId,
+    title: options.title,
+    status: "pass",
+    message: options.passMessage,
+    skippedPatterns
+  };
 }
 
 export function runSecurityChecks(context: LintContext): LintIssue[] {
   const issues: LintIssue[] = [];
   const skillText = context.skill.raw;
+  const needsZoneParsing =
+    !isSuppressed(context, "security:dangerous-commands") ||
+    !isSuppressed(context, "security:exfiltration") ||
+    !isSuppressed(context, "security:privilege-escalation");
+  const zones = needsZoneParsing ? parseZones(skillText) : [];
 
-  const dangerousCommandHits = collectMatches(skillText, DANGEROUS_COMMAND_PATTERNS);
-  if (dangerousCommandHits.length > 0) {
-    issues.push({
-      id: "security.dangerous-command-patterns",
-      checkId: "security:dangerous-commands",
-      title: "Dangerous Command Patterns",
-      status: "fail",
-      message: `Potentially dangerous command instruction patterns found: ${dangerousCommandHits.join(", ")}.`,
-      suggestion: "Remove destructive/pipe-exec command examples or wrap them with explicit safety constraints."
-    });
-  } else {
-    issues.push({
-      id: "security.dangerous-command-patterns",
-      checkId: "security:dangerous-commands",
-      title: "Dangerous Command Patterns",
-      status: "pass",
-      message: "No high-risk destructive or direct pipe-to-shell patterns detected."
-    });
+  const dangerousCommandsIssue = runZoneAwareSecurityCheck(context, zones, {
+    id: "security.dangerous-command-patterns",
+    checkId: "security:dangerous-commands",
+    title: "Dangerous Command Patterns",
+    statusOnMatch: "fail",
+    patterns: DANGEROUS_COMMAND_PATTERNS,
+    matchMessagePrefix: "Potentially dangerous command instruction patterns found",
+    passMessage: "No high-risk destructive or direct pipe-to-shell patterns detected.",
+    suggestion: "Remove destructive/pipe-exec command examples or wrap them with explicit safety constraints."
+  });
+  if (dangerousCommandsIssue) {
+    issues.push(dangerousCommandsIssue);
   }
 
-  const exfiltrationHits = collectMatches(skillText, EXFILTRATION_PATTERNS);
-  if (exfiltrationHits.length > 0) {
-    issues.push({
-      id: "security.exfiltration-patterns",
-      checkId: "security:exfiltration",
-      title: "Sensitive Data Exfiltration",
-      status: "fail",
-      message: `Possible sensitive data exfiltration patterns found: ${exfiltrationHits.join(", ")}.`,
-      suggestion: "Remove instructions that access or transmit secrets/credential files."
-    });
-  } else {
-    issues.push({
-      id: "security.exfiltration-patterns",
-      checkId: "security:exfiltration",
-      title: "Sensitive Data Exfiltration",
-      status: "pass",
-      message: "No obvious credential access/exfiltration instructions detected."
-    });
+  const exfiltrationIssue = runZoneAwareSecurityCheck(context, zones, {
+    id: "security.exfiltration-patterns",
+    checkId: "security:exfiltration",
+    title: "Sensitive Data Exfiltration",
+    statusOnMatch: "fail",
+    patterns: EXFILTRATION_PATTERNS,
+    matchMessagePrefix: "Possible sensitive data exfiltration patterns found",
+    passMessage: "No obvious credential access/exfiltration instructions detected.",
+    suggestion: "Remove instructions that access or transmit secrets/credential files."
+  });
+  if (exfiltrationIssue) {
+    issues.push(exfiltrationIssue);
   }
 
-  const escalationHits = collectMatches(skillText, PRIVILEGE_ESCALATION_PATTERNS);
-  if (escalationHits.length > 0) {
-    issues.push({
-      id: "security.privilege-escalation",
-      checkId: "security:privilege-escalation",
-      title: "Privilege Escalation Language",
-      status: "warn",
-      message: `Potentially risky privilege/execution language detected: ${escalationHits.join(", ")}.`,
-      suggestion: "Prefer least-privilege execution and explicit approval steps for elevated commands."
-    });
-  } else {
-    issues.push({
-      id: "security.privilege-escalation",
-      checkId: "security:privilege-escalation",
-      title: "Privilege Escalation Language",
-      status: "pass",
-      message: "No obvious privilege-escalation language detected."
-    });
+  const privilegeEscalationIssue = runZoneAwareSecurityCheck(context, zones, {
+    id: "security.privilege-escalation",
+    checkId: "security:privilege-escalation",
+    title: "Privilege Escalation Language",
+    statusOnMatch: "warn",
+    patterns: PRIVILEGE_ESCALATION_PATTERNS,
+    matchMessagePrefix: "Potentially risky privilege/execution language detected",
+    passMessage: "No obvious privilege-escalation language detected.",
+    suggestion: "Prefer least-privilege execution and explicit approval steps for elevated commands."
+  });
+  if (privilegeEscalationIssue) {
+    issues.push(privilegeEscalationIssue);
   }
 
-  const hasShellActivity = SHELL_ACTIVITY_PATTERNS.some((pattern) => pattern.test(skillText));
-  if (hasShellActivity && !SAFETY_GUARDRAIL_PATTERN.test(skillText)) {
-    issues.push({
-      id: "security.safety-guardrails",
-      checkId: "security:missing-guardrails",
-      title: "Execution Safety Guardrails",
-      status: "warn",
-      message: "Shell/tool execution is present, but no explicit safety guardrails were detected.",
-      suggestion: "Add guidance such as approval requirements, dry-run mode, scope checks, and redaction rules."
-    });
-  } else {
-    issues.push({
-      id: "security.safety-guardrails",
-      checkId: "security:missing-guardrails",
-      title: "Execution Safety Guardrails",
-      status: "pass",
-      message: hasShellActivity
-        ? "Shell/tool execution instructions include at least one safety guardrail."
-        : "No shell/tool execution instructions detected."
-    });
+  if (!isSuppressed(context, "security:missing-guardrails")) {
+    const hasShellActivity = SHELL_ACTIVITY_PATTERNS.some((pattern) => pattern.test(skillText));
+    if (hasShellActivity && !SAFETY_GUARDRAIL_PATTERN.test(skillText)) {
+      issues.push({
+        id: "security.safety-guardrails",
+        checkId: "security:missing-guardrails",
+        title: "Execution Safety Guardrails",
+        status: "warn",
+        message: "Shell/tool execution is present, but no explicit safety guardrails were detected.",
+        suggestion: "Add guidance such as approval requirements, dry-run mode, scope checks, and redaction rules."
+      });
+    } else {
+      issues.push({
+        id: "security.safety-guardrails",
+        checkId: "security:missing-guardrails",
+        title: "Execution Safety Guardrails",
+        status: "pass",
+        message: hasShellActivity
+          ? "Shell/tool execution instructions include at least one safety guardrail."
+          : "No shell/tool execution instructions detected."
+      });
+    }
   }
 
   return issues;

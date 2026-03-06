@@ -1,5 +1,6 @@
 import { LintContext } from "./context.js";
-import { LintIssue } from "./types.js";
+import { parseZones, Zone } from "./markdown-zones.js";
+import { LintIssue, LintSkippedPattern } from "./types.js";
 
 const VAGUE_PATTERNS = [
   /\bdo something appropriate\b/i,
@@ -17,6 +18,121 @@ const SECRET_PATTERNS: Array<{ label: string; regex: RegExp }> = [
   { label: "Slack token", regex: /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/ },
   { label: "Generic private key header", regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ }
 ];
+
+interface SecretOccurrence extends LintSkippedPattern {}
+
+function summarizeLineRange(matches: SecretOccurrence[]): Pick<LintIssue, "startLine" | "endLine"> {
+  if (matches.length === 0) {
+    return {};
+  }
+
+  return {
+    startLine: Math.min(...matches.map((match) => match.startLine)),
+    endLine: Math.max(...matches.map((match) => match.endLine))
+  };
+}
+
+function uniqueLabels(matches: SecretOccurrence[]): string[] {
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const match of matches) {
+    if (seen.has(match.label)) {
+      continue;
+    }
+    seen.add(match.label);
+    labels.push(match.label);
+  }
+  return labels;
+}
+
+function collectSecretMatches(zones: Zone[]): { prose: SecretOccurrence[]; nonProse: SecretOccurrence[] } {
+  const prose: SecretOccurrence[] = [];
+  const nonProse: SecretOccurrence[] = [];
+
+  for (const zone of zones) {
+    for (const pattern of SECRET_PATTERNS) {
+      if (!pattern.regex.test(zone.content)) {
+        continue;
+      }
+
+      const occurrence: SecretOccurrence = {
+        label: pattern.label,
+        zoneType: zone.type,
+        startLine: zone.startLine,
+        endLine: zone.endLine
+      };
+
+      if (zone.type === "prose") {
+        prose.push(occurrence);
+      } else {
+        nonProse.push(occurrence);
+      }
+    }
+  }
+
+  return { prose, nonProse };
+}
+
+function buildSkippedPatterns(matches: SecretOccurrence[]): LintSkippedPattern[] | undefined {
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  return matches.map((match) => ({
+    label: match.label,
+    zoneType: match.zoneType,
+    startLine: match.startLine,
+    endLine: match.endLine
+  }));
+}
+
+function buildSecretsIssue(context: LintContext): LintIssue | null {
+  if (context.suppressedCheckIds.has("content:secrets")) {
+    return null;
+  }
+
+  const { prose, nonProse } = collectSecretMatches(parseZones(context.skill.raw));
+  const proseLabels = uniqueLabels(prose);
+  const nonProseLabels = uniqueLabels(nonProse);
+  const skippedPatterns = buildSkippedPatterns(nonProse);
+
+  if (proseLabels.length > 0) {
+    return {
+      id: "content.secrets",
+      checkId: "content:secrets",
+      title: "Hardcoded Secrets",
+      status: "fail",
+      message: `Potential secrets detected (${proseLabels.join(", ")}).`,
+      suggestion: "Remove secrets from skill files and use environment variables or secret managers.",
+      ...summarizeLineRange(prose),
+      skippedPatterns
+    };
+  }
+
+  if (nonProseLabels.length > 0) {
+    const codeFenceOnly = nonProse.every((match) => match.zoneType === "code-fence");
+    return {
+      id: "content.secrets",
+      checkId: "content:secrets",
+      title: "Hardcoded Secrets",
+      status: "warn",
+      message: codeFenceOnly
+        ? `Possible secret in code example — verify this is a placeholder, not a real key (${nonProseLabels.join(", ")}).`
+        : `Possible secrets found outside prose instructions (${nonProseLabels.join(", ")}). Verify these are placeholders, not real credentials.`,
+      suggestion: "Replace real-looking credentials in examples with explicit placeholders such as YOUR_API_KEY.",
+      ...summarizeLineRange(nonProse),
+      skippedPatterns
+    };
+  }
+
+  return {
+    id: "content.secrets",
+    checkId: "content:secrets",
+    title: "Hardcoded Secrets",
+    status: "pass",
+    message: "No obvious API keys or secrets patterns were detected."
+  };
+}
 
 export function runContentChecks(context: LintContext): LintIssue[] {
   const issues: LintIssue[] = [];
@@ -105,29 +221,9 @@ export function runContentChecks(context: LintContext): LintIssue[] {
     });
   }
 
-  const secretHits = new Set<string>();
-  for (const pattern of SECRET_PATTERNS) {
-    if (pattern.regex.test(context.skill.raw)) {
-      secretHits.add(pattern.label);
-    }
-  }
-  if (secretHits.size > 0) {
-    issues.push({
-      id: "content.secrets",
-      checkId: "content:secrets",
-      title: "Hardcoded Secrets",
-      status: "fail",
-      message: `Potential secrets detected (${Array.from(secretHits).join(", ")}).`,
-      suggestion: "Remove secrets from skill files and use environment variables or secret managers."
-    });
-  } else {
-    issues.push({
-      id: "content.secrets",
-      checkId: "content:secrets",
-      title: "Hardcoded Secrets",
-      status: "pass",
-      message: "No obvious API keys or secrets patterns were detected."
-    });
+  const secretsIssue = buildSecretsIssue(context);
+  if (secretsIssue) {
+    issues.push(secretsIssue);
   }
 
   if (bodyLines.length < 10) {

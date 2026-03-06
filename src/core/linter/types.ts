@@ -1,4 +1,13 @@
+import type { ZoneType } from "./markdown-zones.js";
+
 export type CheckStatus = "pass" | "warn" | "fail";
+
+export interface LintSkippedPattern {
+  label: string;
+  zoneType: ZoneType;
+  startLine: number;
+  endLine: number;
+}
 
 export interface LintIssue {
   id: string;
@@ -7,6 +16,9 @@ export interface LintIssue {
   status: CheckStatus;
   message: string;
   suggestion?: string;
+  startLine?: number;
+  endLine?: number;
+  skippedPatterns?: LintSkippedPattern[];
 }
 
 export interface LintSummary {

@@ -15,6 +15,15 @@ function renderIssueLine(issue: LintIssue, c: ChalkInstance): string {
   return `  ${label} ${issue.title}\n      ${issue.message}${detail}`;
 }
 
+function countSkippedSecurityPatterns(issues: LintIssue[]): number {
+  return issues.reduce((total, issue) => {
+    if (!issue.checkId.startsWith("security:")) {
+      return total;
+    }
+    return total + (issue.skippedPatterns?.length ?? 0);
+  }, 0);
+}
+
 export function renderLintReport(report: LintReport, enableColor: boolean): string {
   const c = getChalkInstance(enableColor);
   const { passed, warnings, failures, total } = report.summary;
@@ -29,7 +38,12 @@ export function renderLintReport(report: LintReport, enableColor: boolean): stri
   ];
 
   const renderedIssues = report.issues.map((issue) => renderIssueLine(issue, c)).join("\n");
-  return `${headerLines.join("\n")}\n${renderedIssues}`;
+  const skippedSecurityPatterns = countSkippedSecurityPatterns(report.issues);
+  const infoLine =
+    skippedSecurityPatterns > 0
+      ? `\n  ${c.cyan("ℹ")} ${skippedSecurityPatterns} security pattern(s) found in code examples/comments (not flagged)`
+      : "";
+  return `${headerLines.join("\n")}\n${renderedIssues}${infoLine}`;
 }
 
 function formatPercent(value: number): string {
@@ -129,6 +143,10 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
   const lintIssues = verbose ? result.lint.issues : result.lint.issues.filter((issue) => issue.status !== "pass");
   for (const issue of lintIssues) {
     lines.push(renderIssueLine(issue, c));
+  }
+  const skippedSecurityPatterns = countSkippedSecurityPatterns(result.lint.issues);
+  if (skippedSecurityPatterns > 0) {
+    lines.push(`  ${c.cyan("ℹ")} ${skippedSecurityPatterns} security pattern(s) found in code examples/comments (not flagged)`);
   }
 
   lines.push("");

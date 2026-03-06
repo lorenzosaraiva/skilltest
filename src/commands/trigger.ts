@@ -11,6 +11,7 @@ import { writeJsonFile } from "../utils/fs.js";
 const triggerCliSchema = z.object({
   queries: z.string().optional(),
   saveQueries: z.string().optional(),
+  seed: z.number().int().optional(),
   verbose: z.boolean().optional(),
   apiKey: z.string().optional()
 });
@@ -36,6 +37,13 @@ function resolveModel(provider: "anthropic" | "openai", model: string): string {
     return DEFAULT_OPENAI_MODEL;
   }
   return model;
+}
+
+function renderTriggerOutputWithSeed(output: string, seed?: number): string {
+  if (seed === undefined) {
+    return output;
+  }
+  return `${output}\nSeed: ${seed}`;
 }
 
 async function handleTriggerCommand(targetPath: string, options: TriggerCommandOptions): Promise<void> {
@@ -81,7 +89,7 @@ async function handleTriggerCommand(targetPath: string, options: TriggerCommandO
     if (options.json) {
       writeResult(result, true);
     } else {
-      writeResult(renderTriggerReport(result, options.color, options.verbose), false);
+      writeResult(renderTriggerOutputWithSeed(renderTriggerReport(result, options.color, options.verbose), result.seed), false);
     }
   } catch (error) {
     spinner?.stop();
@@ -99,6 +107,7 @@ export function registerTriggerCommand(program: Command): void {
     .option("--provider <provider>", "LLM provider: anthropic|openai")
     .option("--queries <path>", "Path to custom test queries JSON")
     .option("--num-queries <n>", "Number of auto-generated queries", (value) => Number.parseInt(value, 10))
+    .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
     .option("--save-queries <path>", "Save generated queries to a JSON file")
     .option("--api-key <key>", "API key override")
     .option("--verbose", "Show full model decisions")
@@ -119,7 +128,7 @@ export function registerTriggerCommand(program: Command): void {
         queries: parsedCli.data.queries,
         numQueries: config.trigger.numQueries,
         saveQueries: parsedCli.data.saveQueries,
-        seed: config.trigger.seed,
+        seed: parsedCli.data.seed ?? config.trigger.seed,
         verbose: Boolean(parsedCli.data.verbose),
         apiKey: parsedCli.data.apiKey
       });

@@ -46,9 +46,11 @@ export function lintFails(report: Pick<LintReport, "summary">, failOn: LintFailO
 export async function runLinter(inputPath: string, options: RunLinterOptions = {}): Promise<LintReport> {
   const skill = await loadSkillFile(inputPath);
   const frontmatter = parseFrontmatter(skill.raw);
+  const suppressedCheckIds = new Set(options.suppress ?? []);
   const context: LintContext = {
     skill,
-    frontmatter
+    frontmatter,
+    suppressedCheckIds
   };
 
   const issues: LintIssue[] = [];
@@ -59,8 +61,7 @@ export async function runLinter(inputPath: string, options: RunLinterOptions = {
   issues.push(...(await runDisclosureChecks(context)));
   issues.push(...runCompatibilityChecks(context));
 
-  const suppress = new Set(options.suppress ?? []);
-  const filteredIssues = issues.filter((issue) => !suppress.has(issue.checkId));
+  const filteredIssues = issues.filter((issue) => !suppressedCheckIds.has(issue.checkId));
 
   return {
     target: inputPath,

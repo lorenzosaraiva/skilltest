@@ -19,6 +19,7 @@ const checkCliSchema = z.object({
   graderModel: z.string().optional(),
   apiKey: z.string().optional(),
   queries: z.string().optional(),
+  seed: z.number().int().optional(),
   prompts: z.string().optional(),
   saveResults: z.string().optional(),
   continueOnLintFail: z.boolean().optional(),
@@ -54,6 +55,21 @@ function resolveModel(provider: "anthropic" | "openai", model: string): string {
     return DEFAULT_OPENAI_MODEL;
   }
   return model;
+}
+
+function renderCheckOutputWithSeed(output: string, seed?: number): string {
+  if (seed === undefined) {
+    return output;
+  }
+
+  const lines = output.split("\n");
+  const triggerIndex = lines.indexOf("Trigger");
+  if (triggerIndex === -1) {
+    return `${output}\nSeed: ${seed}`;
+  }
+
+  lines.splice(triggerIndex + 1, 0, `Seed: ${seed}`);
+  return lines.join("\n");
 }
 
 async function handleCheckCommand(targetPath: string, options: CheckCommandOptions, command: Command): Promise<void> {
@@ -125,7 +141,10 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
     if (options.json) {
       writeResult(result, true);
     } else {
-      writeResult(renderCheckReport(result, options.color, options.verbose), false);
+      writeResult(
+        renderCheckOutputWithSeed(renderCheckReport(result, options.color, options.verbose), result.trigger?.seed),
+        false
+      );
     }
 
     process.exitCode = result.gates.overallPassed ? 0 : 1;
@@ -147,6 +166,7 @@ export function registerCheckCommand(program: Command): void {
     .option("--api-key <key>", "API key override")
     .option("--queries <path>", "Path to custom trigger queries JSON")
     .option("--num-queries <n>", "Number of auto-generated trigger queries", (value) => Number.parseInt(value, 10))
+    .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
     .option("--prompts <path>", "Path to eval prompts JSON")
     .option("--min-f1 <n>", "Minimum required trigger F1 score (0-1)", (value) => Number.parseFloat(value))
     .option("--min-assert-pass-rate <n>", "Minimum required eval assertion pass rate (0-1)", (value) => Number.parseFloat(value))
@@ -179,7 +199,7 @@ export function registerCheckCommand(program: Command): void {
           numRuns: config.eval.numRuns,
           lintFailOn: config.lint.failOn,
           lintSuppress: config.lint.suppress,
-          triggerSeed: config.trigger.seed,
+          triggerSeed: parsedCli.data.seed ?? config.trigger.seed,
           saveResults: parsedCli.data.saveResults,
           continueOnLintFail: Boolean(parsedCli.data.continueOnLintFail),
           verbose: Boolean(parsedCli.data.verbose)

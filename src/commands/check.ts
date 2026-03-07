@@ -1,8 +1,10 @@
+import fs from "node:fs/promises";
 import ora from "ora";
 import { Command } from "commander";
 import { z } from "zod";
 import { runCheck } from "../core/check-runner.js";
 import { createProvider } from "../providers/index.js";
+import { renderCheckHtml } from "../reporters/html.js";
 import { renderCheckReport } from "../reporters/terminal.js";
 import {
   getGlobalCliOptions,
@@ -21,6 +23,8 @@ const checkCliSchema = z.object({
   queries: z.string().optional(),
   seed: z.number().int().optional(),
   prompts: z.string().optional(),
+  concurrency: z.number().int().min(1).optional(),
+  html: z.string().optional(),
   saveResults: z.string().optional(),
   continueOnLintFail: z.boolean().optional(),
   verbose: z.boolean().optional()
@@ -42,6 +46,8 @@ interface CheckCommandOptions {
   minF1: number;
   minAssertPassRate: number;
   numRuns: number;
+  concurrency: number;
+  html?: string;
   lintFailOn: "error" | "warn";
   lintSuppress: string[];
   triggerSeed?: number;
@@ -113,6 +119,7 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
       triggerSeed: options.triggerSeed,
       prompts,
       evalNumRuns: options.numRuns,
+      concurrency: options.concurrency,
       minF1: options.minF1,
       minAssertPassRate: options.minAssertPassRate,
       continueOnLintFail: options.continueOnLintFail,
@@ -125,10 +132,8 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
           spinner.text = "Running lint checks...";
         } else if (stage === "parse") {
           spinner.text = "Parsing skill for model evaluations...";
-        } else if (stage === "trigger") {
-          spinner.text = "Running trigger test suite...";
-        } else if (stage === "eval") {
-          spinner.text = "Running end-to-end eval suite...";
+        } else if (stage === "trigger" || stage === "eval") {
+          spinner.text = "Running trigger and eval suites...";
         }
       }
     });
@@ -145,6 +150,10 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
         renderCheckOutputWithSeed(renderCheckReport(result, options.color, options.verbose), result.trigger?.seed),
         false
       );
+    }
+
+    if (options.html) {
+      await fs.writeFile(options.html, renderCheckHtml(result), "utf8");
     }
 
     process.exitCode = result.gates.overallPassed ? 0 : 1;
@@ -168,6 +177,8 @@ export function registerCheckCommand(program: Command): void {
     .option("--num-queries <n>", "Number of auto-generated trigger queries", (value) => Number.parseInt(value, 10))
     .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
     .option("--prompts <path>", "Path to eval prompts JSON")
+    .option("--concurrency <n>", "Maximum in-flight trigger/eval tasks", (value) => Number.parseInt(value, 10))
+    .option("--html <path>", "Write an HTML report to the given file path")
     .option("--min-f1 <n>", "Minimum required trigger F1 score (0-1)", (value) => Number.parseFloat(value))
     .option("--min-assert-pass-rate <n>", "Minimum required eval assertion pass rate (0-1)", (value) => Number.parseFloat(value))
     .option("--save-results <path>", "Save combined check results to JSON")
@@ -197,6 +208,8 @@ export function registerCheckCommand(program: Command): void {
           minF1: config.trigger.threshold,
           minAssertPassRate: config.eval.threshold,
           numRuns: config.eval.numRuns,
+          concurrency: config.concurrency,
+          html: parsedCli.data.html,
           lintFailOn: config.lint.failOn,
           lintSuppress: config.lint.suppress,
           triggerSeed: parsedCli.data.seed ?? config.trigger.seed,

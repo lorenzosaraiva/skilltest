@@ -1,9 +1,11 @@
+import fs from "node:fs/promises";
 import ora from "ora";
 import { Command } from "commander";
 import { z } from "zod";
 import { runTriggerTest } from "../core/trigger-tester.js";
 import { parseSkillStrict } from "../core/skill-parser.js";
 import { createProvider } from "../providers/index.js";
+import { renderTriggerHtml } from "../reporters/html.js";
 import { renderTriggerReport } from "../reporters/terminal.js";
 import { getGlobalCliOptions, getResolvedConfig, loadTriggerQueriesFile, writeError, writeResult } from "./common.js";
 import { writeJsonFile } from "../utils/fs.js";
@@ -12,6 +14,8 @@ const triggerCliSchema = z.object({
   queries: z.string().optional(),
   saveQueries: z.string().optional(),
   seed: z.number().int().optional(),
+  concurrency: z.number().int().min(1).optional(),
+  html: z.string().optional(),
   verbose: z.boolean().optional(),
   apiKey: z.string().optional()
 });
@@ -28,6 +32,8 @@ interface TriggerCommandOptions {
   numQueries: number;
   saveQueries?: string;
   seed?: number;
+  concurrency: number;
+  html?: string;
   verbose: boolean;
   apiKey?: string;
 }
@@ -78,6 +84,7 @@ async function handleTriggerCommand(targetPath: string, options: TriggerCommandO
       queries,
       numQueries: options.numQueries,
       seed: options.seed,
+      concurrency: options.concurrency,
       verbose: options.verbose
     });
 
@@ -90,6 +97,14 @@ async function handleTriggerCommand(targetPath: string, options: TriggerCommandO
       writeResult(result, true);
     } else {
       writeResult(renderTriggerOutputWithSeed(renderTriggerReport(result, options.color, options.verbose), result.seed), false);
+    }
+
+    if (options.html) {
+      const htmlResult: typeof result & { target: string } = {
+        ...result,
+        target: targetPath
+      };
+      await fs.writeFile(options.html, renderTriggerHtml(htmlResult), "utf8");
     }
   } catch (error) {
     spinner?.stop();
@@ -108,6 +123,8 @@ export function registerTriggerCommand(program: Command): void {
     .option("--queries <path>", "Path to custom test queries JSON")
     .option("--num-queries <n>", "Number of auto-generated queries", (value) => Number.parseInt(value, 10))
     .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
+    .option("--concurrency <n>", "Maximum in-flight trigger requests", (value) => Number.parseInt(value, 10))
+    .option("--html <path>", "Write an HTML report to the given file path")
     .option("--save-queries <path>", "Save generated queries to a JSON file")
     .option("--api-key <key>", "API key override")
     .option("--verbose", "Show full model decisions")
@@ -129,6 +146,8 @@ export function registerTriggerCommand(program: Command): void {
         numQueries: config.trigger.numQueries,
         saveQueries: parsedCli.data.saveQueries,
         seed: parsedCli.data.seed ?? config.trigger.seed,
+        concurrency: config.concurrency,
+        html: parsedCli.data.html,
         verbose: Boolean(parsedCli.data.verbose),
         apiKey: parsedCli.data.apiKey
       });

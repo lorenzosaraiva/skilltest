@@ -67,12 +67,53 @@ Run full quality gate:
 skilltest check ./path/to/skill --provider anthropic --min-f1 0.8 --min-assert-pass-rate 0.9
 ```
 
+Write a self-contained HTML report:
+
+```bash
+skilltest check ./path/to/skill --html ./reports/check.html
+```
+
+Model-backed commands default to `--concurrency 5`. Use `--concurrency 1` to force
+the old sequential execution order. Seeded trigger runs stay deterministic regardless
+of concurrency.
+All four commands also support `--html <path>` for an offline HTML report, and
+`--json` can be used with `--html` in the same run.
+
 Example lint summary:
 
 ```text
 skilltest lint
 target: ./test-fixtures/sample-skill
 summary: 29/29 checks passed, 0 warnings, 0 failures
+```
+
+## Configuration
+
+`skilltest` resolves config in this order:
+
+1. `.skilltestrc` in the target skill root
+2. `.skilltestrc` in the current working directory
+3. the nearest `package.json` containing `skilltestrc`
+
+CLI flags override config values.
+
+Example `.skilltestrc`:
+
+```json
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-5-20250929",
+  "concurrency": 5,
+  "trigger": {
+    "numQueries": 20,
+    "threshold": 0.8,
+    "seed": 123
+  },
+  "eval": {
+    "numRuns": 5,
+    "threshold": 0.9
+  }
+}
 ```
 
 ## Commands
@@ -115,6 +156,10 @@ What it checks:
   - warns on provider-specific conventions such as `allowed-tools`
   - emits a likely compatibility summary
 
+Flags:
+
+- `--html <path>` write a self-contained HTML report
+
 ### `skilltest trigger <path-to-skill>`
 
 Measures trigger behavior for your skill description with model simulation.
@@ -131,6 +176,8 @@ Flow:
 For reproducible fake-skill sampling, pass `--seed <number>`. When a seed is used,
 terminal and JSON output include it so the run can be repeated exactly. If you use
 `.skilltestrc`, `trigger.seed` sets the default and the CLI flag overrides it.
+The fake-skill setup is precomputed before requests begin, so the same seed produces
+the same trigger cases at any concurrency level.
 
 Flags:
 
@@ -139,6 +186,8 @@ Flags:
 - `--queries <path>` use custom queries JSON
 - `--num-queries <n>` default: `20` (must be even)
 - `--seed <number>` RNG seed for reproducible fake-skill sampling
+- `--concurrency <n>` default: `5`
+- `--html <path>` write a self-contained HTML report
 - `--save-queries <path>` save generated query set
 - `--api-key <key>` explicit key override
 - `--verbose` show full model decision text
@@ -160,6 +209,8 @@ Flags:
 - `--model <model>` default: `claude-sonnet-4-5-20250929`
 - `--grader-model <model>` default: same as `--model`
 - `--provider <anthropic|openai>` default: `anthropic`
+- `--concurrency <n>` default: `5`
+- `--html <path>` write a self-contained HTML report
 - `--save-results <path>` write full JSON result
 - `--api-key <key>` explicit key override
 - `--verbose` show full model responses
@@ -173,7 +224,8 @@ Default behavior:
 1. Run lint.
 2. Stop before model calls if lint has failures.
 3. Run trigger and eval only when lint passes.
-4. Fail quality gate when either threshold is below target.
+4. When concurrency is greater than `1`, run trigger and eval in parallel.
+5. Fail quality gate when either threshold is below target.
 
 Flags:
 
@@ -185,6 +237,8 @@ Flags:
 - `--num-queries <n>` default: `20` (must be even)
 - `--seed <number>` RNG seed for reproducible trigger sampling
 - `--prompts <path>` custom eval prompts JSON
+- `--concurrency <n>` default: `5` (`1` keeps the old sequential `check` behavior)
+- `--html <path>` write a self-contained HTML report
 - `--min-f1 <n>` default: `0.8`
 - `--min-assert-pass-rate <n>` default: `0.9`
 - `--save-results <path>` save combined check result JSON
@@ -244,6 +298,15 @@ skilltest lint ./skill --json
 skilltest trigger ./skill --json
 skilltest eval ./skill --json
 skilltest check ./skill --json
+```
+
+HTML report examples:
+
+```bash
+skilltest lint ./skill --html ./reports/lint.html
+skilltest trigger ./skill --html ./reports/trigger.html
+skilltest eval ./skill --html ./reports/eval.html
+skilltest check ./skill --json --html ./reports/check.html
 ```
 
 Seeded trigger example:
@@ -355,6 +418,7 @@ Smoke tests:
 
 ```bash
 node dist/index.js lint test-fixtures/sample-skill/
+node dist/index.js lint test-fixtures/sample-skill/ --html lint-report.html
 node dist/index.js trigger test-fixtures/sample-skill/ --num-queries 2
 node dist/index.js trigger test-fixtures/sample-skill/ --queries path/to/queries.json --seed 123
 node dist/index.js eval test-fixtures/sample-skill/ --prompts test-fixtures/eval-prompts.json

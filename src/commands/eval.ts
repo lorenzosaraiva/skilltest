@@ -1,9 +1,11 @@
+import fs from "node:fs/promises";
 import ora from "ora";
 import { Command } from "commander";
 import { z } from "zod";
 import { runEval } from "../core/eval-runner.js";
 import { parseSkillStrict } from "../core/skill-parser.js";
 import { createProvider } from "../providers/index.js";
+import { renderEvalHtml } from "../reporters/html.js";
 import { renderEvalReport } from "../reporters/terminal.js";
 import {
   getGlobalCliOptions,
@@ -19,6 +21,8 @@ const evalCliSchema = z.object({
   prompts: z.string().optional(),
   graderModel: z.string().optional(),
   saveResults: z.string().optional(),
+  concurrency: z.number().int().min(1).optional(),
+  html: z.string().optional(),
   verbose: z.boolean().optional(),
   apiKey: z.string().optional()
 });
@@ -37,6 +41,8 @@ interface EvalCommandOptions {
   verbose: boolean;
   apiKey?: string;
   numRuns: number;
+  concurrency: number;
+  html?: string;
 }
 
 function resolveModel(provider: "anthropic" | "openai", model: string): string {
@@ -80,6 +86,7 @@ async function handleEvalCommand(targetPath: string, options: EvalCommandOptions
       model,
       graderModel,
       numRuns: options.numRuns,
+      concurrency: options.concurrency,
       prompts
     });
 
@@ -92,6 +99,14 @@ async function handleEvalCommand(targetPath: string, options: EvalCommandOptions
       writeResult(result, true);
     } else {
       writeResult(renderEvalReport(result, options.color, options.verbose), false);
+    }
+
+    if (options.html) {
+      const htmlResult: typeof result & { target: string } = {
+        ...result,
+        target: targetPath
+      };
+      await fs.writeFile(options.html, renderEvalHtml(htmlResult), "utf8");
     }
   } catch (error) {
     spinner?.stop();
@@ -109,6 +124,8 @@ export function registerEvalCommand(program: Command): void {
     .option("--model <model>", "Model to execute prompts")
     .option("--grader-model <model>", "Model used for grading (defaults to --model)")
     .option("--provider <provider>", "LLM provider: anthropic|openai")
+    .option("--concurrency <n>", "Maximum in-flight eval prompt runs", (value) => Number.parseInt(value, 10))
+    .option("--html <path>", "Write an HTML report to the given file path")
     .option("--save-results <path>", "Save full evaluation results to JSON")
     .option("--api-key <key>", "API key override")
     .option("--verbose", "Show full model responses")
@@ -131,9 +148,11 @@ export function registerEvalCommand(program: Command): void {
           graderModel: parsedCli.data.graderModel,
           provider: config.provider,
           saveResults: parsedCli.data.saveResults,
+          html: parsedCli.data.html,
           verbose: Boolean(parsedCli.data.verbose),
           apiKey: parsedCli.data.apiKey,
-          numRuns: config.eval.numRuns
+          numRuns: config.eval.numRuns,
+          concurrency: config.concurrency
         },
         command
       );

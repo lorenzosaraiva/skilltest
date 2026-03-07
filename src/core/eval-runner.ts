@@ -2,6 +2,7 @@ import { z } from "zod";
 import { gradeResponse, GradedAssertion } from "./grader.js";
 import { ParsedSkill } from "./skill-parser.js";
 import { LanguageModelProvider } from "../providers/types.js";
+import { pMap } from "../utils/concurrency.js";
 
 export interface EvalPrompt {
   prompt: string;
@@ -97,6 +98,7 @@ export interface RunEvalOptions {
   graderModel: string;
   numRuns: number;
   prompts?: EvalPrompt[];
+  concurrency?: number;
 }
 
 export async function runEval(skill: ParsedSkill, options: RunEvalOptions): Promise<EvalResult> {
@@ -105,38 +107,40 @@ export async function runEval(skill: ParsedSkill, options: RunEvalOptions): Prom
       ? evalPromptArraySchema.parse(options.prompts)
       : await generatePrompts(skill, options.provider, options.model, options.numRuns);
 
-  const results: EvalPromptResult[] = [];
+  const systemPrompt = [
+    "You are an AI assistant with an activated skill.",
+    "Follow this SKILL.md content exactly where applicable.",
+    "",
+    skill.raw
+  ].join("\n");
 
-  for (const evalPrompt of prompts) {
-    const systemPrompt = [
-      "You are an AI assistant with an activated skill.",
-      "Follow this SKILL.md content exactly where applicable.",
-      "",
-      skill.raw
-    ].join("\n");
+  const results = await pMap(
+    prompts,
+    async (evalPrompt) => {
+      const response = await options.provider.sendMessage(systemPrompt, evalPrompt.prompt, { model: options.model });
 
-    const response = await options.provider.sendMessage(systemPrompt, evalPrompt.prompt, { model: options.model });
+      const gradedAssertions = await gradeResponse({
+        provider: options.provider,
+        model: options.graderModel,
+        skillName: skill.frontmatter.name,
+        skillBody: skill.content,
+        userPrompt: evalPrompt.prompt,
+        modelResponse: response,
+        assertions: evalPrompt.assertions
+      });
 
-    const gradedAssertions = await gradeResponse({
-      provider: options.provider,
-      model: options.graderModel,
-      skillName: skill.frontmatter.name,
-      skillBody: skill.content,
-      userPrompt: evalPrompt.prompt,
-      modelResponse: response,
-      assertions: evalPrompt.assertions
-    });
-
-    const passedAssertions = gradedAssertions.filter((assertion) => assertion.passed).length;
-    results.push({
-      prompt: evalPrompt.prompt,
-      assertions: gradedAssertions,
-      responseSummary: response.slice(0, 200),
-      response,
-      passedAssertions,
-      totalAssertions: gradedAssertions.length
-    });
-  }
+      const passedAssertions = gradedAssertions.filter((assertion) => assertion.passed).length;
+      return {
+        prompt: evalPrompt.prompt,
+        assertions: gradedAssertions,
+        responseSummary: response.slice(0, 200),
+        response,
+        passedAssertions,
+        totalAssertions: gradedAssertions.length
+      };
+    },
+    options.concurrency ?? 5
+  );
 
   const totalAssertions = results.reduce((total, result) => total + result.totalAssertions, 0);
   const passedAssertions = results.reduce((total, result) => total + result.passedAssertions, 0);

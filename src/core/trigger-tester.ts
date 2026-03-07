@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ParsedSkill } from "./skill-parser.js";
 import { LanguageModelProvider } from "../providers/types.js";
+import { pMap } from "../utils/concurrency.js";
 
 export interface TriggerQuery {
   query: string;
@@ -226,6 +227,7 @@ export interface RunTriggerTestOptions {
   queries?: TriggerQuery[];
   numQueries: number;
   seed?: number;
+  concurrency?: number;
   verbose?: boolean;
 }
 
@@ -236,10 +238,8 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
       ? triggerQueryArraySchema.parse(options.queries)
       : await generateQueriesWithModel(skill, options.provider, options.model, options.numQueries);
 
-  const results: TriggerTestCaseResult[] = [];
   const skillName = skill.frontmatter.name;
-
-  for (const testQuery of queries) {
+  const preparedQueries = queries.map((testQuery) => {
     const fakeCount = 5 + Math.floor(rng() * 5);
     const fakeSkills = sample(FAKE_SKILLS, fakeCount, rng);
     const allSkills = shuffle([
@@ -251,32 +251,45 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
     ], rng);
 
     const skillListText = allSkills.map((entry) => `- ${entry.name}: ${entry.description}`).join("\n");
+    return {
+      testQuery,
+      fakeCount,
+      fakeSkills,
+      allSkills,
+      skillListText
+    };
+  });
 
-    const systemPrompt = [
-      "You are selecting one skill to activate for a user query.",
-      "Choose the single best matching skill name from the provided list, or 'none' if no skill is a good fit.",
-      "Respond with only the skill name or 'none'."
-    ].join(" ");
+  const systemPrompt = [
+    "You are selecting one skill to activate for a user query.",
+    "Choose the single best matching skill name from the provided list, or 'none' if no skill is a good fit.",
+    "Respond with only the skill name or 'none'."
+  ].join(" ");
 
-    const userPrompt = [`Available skills:`, skillListText, "", `User query: ${testQuery.query}`].join("\n");
-    const rawResponse = await options.provider.sendMessage(systemPrompt, userPrompt, { model: options.model });
-    const decision = parseDecision(
-      rawResponse,
-      allSkills.map((entry) => entry.name)
-    );
+  const results = await pMap(
+    preparedQueries,
+    async ({ testQuery, allSkills, skillListText }) => {
+      const userPrompt = [`Available skills:`, skillListText, "", `User query: ${testQuery.query}`].join("\n");
+      const rawResponse = await options.provider.sendMessage(systemPrompt, userPrompt, { model: options.model });
+      const decision = parseDecision(
+        rawResponse,
+        allSkills.map((entry) => entry.name)
+      );
 
-    const expected = testQuery.should_trigger ? skillName : "none";
-    const matched = testQuery.should_trigger ? decision === skillName : decision !== skillName;
+      const expected = testQuery.should_trigger ? skillName : "none";
+      const matched = testQuery.should_trigger ? decision === skillName : decision !== skillName;
 
-    results.push({
-      query: testQuery.query,
-      shouldTrigger: testQuery.should_trigger,
-      expected,
-      actual: decision,
-      matched,
-      rawModelResponse: options.verbose ? rawResponse : undefined
-    });
-  }
+      return {
+        query: testQuery.query,
+        shouldTrigger: testQuery.should_trigger,
+        expected,
+        actual: decision,
+        matched,
+        rawModelResponse: options.verbose ? rawResponse : undefined
+      };
+    },
+    options.concurrency ?? 5
+  );
 
   const metrics = calculateMetrics(skillName, results);
 

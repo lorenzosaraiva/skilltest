@@ -41,6 +41,7 @@ export interface RunCheckOptions {
   lintFailOn: LintFailOn;
   lintSuppress: string[];
   numQueries: number;
+  concurrency?: number;
   triggerSeed?: number;
   queries?: TriggerQuery[];
   evalNumRuns: number;
@@ -84,24 +85,35 @@ export async function runCheck(inputPath: string, options: RunCheckOptions): Pro
     }
 
     if (parsedSkill) {
-      options.onStage?.("trigger");
-      trigger = await runTriggerTest(parsedSkill, {
+      const triggerOptions = {
         provider: options.provider,
         model: options.model,
         queries: options.queries,
         numQueries: options.numQueries,
         seed: options.triggerSeed,
+        concurrency: options.concurrency,
         verbose: options.verbose
-      });
-
-      options.onStage?.("eval");
-      evalResult = await runEval(parsedSkill, {
+      };
+      const evalOptions = {
         provider: options.provider,
         model: options.model,
         graderModel: options.graderModel,
         numRuns: options.evalNumRuns,
-        prompts: options.prompts
-      });
+        prompts: options.prompts,
+        concurrency: options.concurrency
+      };
+
+      if ((options.concurrency ?? 5) === 1) {
+        options.onStage?.("trigger");
+        trigger = await runTriggerTest(parsedSkill, triggerOptions);
+
+        options.onStage?.("eval");
+        evalResult = await runEval(parsedSkill, evalOptions);
+      } else {
+        options.onStage?.("trigger");
+        options.onStage?.("eval");
+        [trigger, evalResult] = await Promise.all([runTriggerTest(parsedSkill, triggerOptions), runEval(parsedSkill, evalOptions)]);
+      }
     }
   }
 

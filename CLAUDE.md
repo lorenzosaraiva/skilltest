@@ -22,7 +22,7 @@ The CLI is published as `skilltest` and built for `npx skilltest` usage.
 - `src/core/check-runner.ts`: orchestrates lint + trigger + eval with threshold gates
 - `src/core/grader.ts`: structured grader prompt + JSON parse
 - `src/providers/`: LLM provider abstraction (`sendMessage`) and provider implementations
-- `src/reporters/`: terminal rendering and JSON output helper
+- `src/reporters/`: terminal, JSON, and HTML output helpers
 - `src/utils/`: filesystem and API key config helpers
 
 ## Build and Test Locally
@@ -73,6 +73,10 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 - `check` wraps lint + trigger + eval and enforces minimum thresholds:
   - trigger F1
   - eval assertion pass rate
+- Trigger/eval work is concurrency-limited instead of fully unbounded:
+  - default concurrency is `5`
+  - `--concurrency 1` preserves the old sequential behavior
+  - trigger RNG-dependent fake-skill setup is precomputed before requests begin, preserving seed determinism
 - JSON mode is strict:
   - no spinners
   - no colored output
@@ -106,6 +110,4 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 ## Future Work (Not Implemented Yet)
 
 - Config file support (`.skilltestrc`)
-- Parallel execution
-- HTML reporting
 - Plugin linter rules

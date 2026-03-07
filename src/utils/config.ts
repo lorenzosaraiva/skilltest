@@ -44,6 +44,7 @@ export const skilltestConfigSchema = z
     provider: providerNameSchema.optional(),
     model: z.string().min(1).optional(),
     json: z.boolean().optional(),
+    concurrency: z.number().int().min(1).optional(),
     lint: lintConfigSchema.optional(),
     trigger: triggerConfigSchema.optional(),
     eval: evalConfigSchema.optional()
@@ -54,6 +55,7 @@ const resolvedSkilltestConfigSchema = z.object({
   provider: providerNameSchema,
   model: z.string().min(1),
   json: z.boolean(),
+  concurrency: z.number().int().min(1),
   lint: z.object({
     failOn: lintFailOnSchema,
     suppress: z.array(z.string().min(1))
@@ -92,6 +94,7 @@ export const DEFAULT_SKILLTEST_CONFIG: ResolvedSkilltestConfig = {
   provider: "anthropic",
   model: "claude-sonnet-4-5-20250929",
   json: false,
+  concurrency: 5,
   lint: {
     failOn: "error",
     suppress: []
@@ -220,6 +223,7 @@ export function mergeConfigLayers(
     provider: cliFlags.provider ?? configFile.provider ?? DEFAULT_SKILLTEST_CONFIG.provider,
     model: cliFlags.model ?? configFile.model ?? DEFAULT_SKILLTEST_CONFIG.model,
     json: cliFlags.json ?? configFile.json ?? DEFAULT_SKILLTEST_CONFIG.json,
+    concurrency: cliFlags.concurrency ?? configFile.concurrency ?? DEFAULT_SKILLTEST_CONFIG.concurrency,
     lint: {
       failOn: cliFlags.lint?.failOn ?? configFile.lint?.failOn ?? DEFAULT_SKILLTEST_CONFIG.lint.failOn,
       suppress: cliFlags.lint?.suppress ?? configFile.lint?.suppress ?? DEFAULT_SKILLTEST_CONFIG.lint.suppress
@@ -272,6 +276,13 @@ export function extractCliConfigOverrides(command: Command): SkilltestConfigFile
     overrides.model = getTypedOptionValue<string>(command, "model");
   }
 
+  if (
+    (command.name() === "trigger" || command.name() === "eval" || command.name() === "check") &&
+    command.getOptionValueSource("concurrency") === "cli"
+  ) {
+    overrides.concurrency = getTypedOptionValue<number>(command, "concurrency");
+  }
+
   if ((command.name() === "trigger" || command.name() === "check") && command.getOptionValueSource("numQueries") === "cli") {
     overrides.trigger = {
       ...overrides.trigger,
@@ -305,7 +316,6 @@ export async function resolveConfigContext(targetPath: string | undefined, cliFl
   const skillDirectoryConfig = await resolveSkillDirectoryConfig(targetPath);
   if (skillDirectoryConfig) {
     return {
-      configFile: skillDirectoryConfig.configFile,
       ...skillDirectoryConfig,
       config: mergeConfigLayers(skillDirectoryConfig.configFile, cliFlags, skillDirectoryConfig.sourceDirectory)
     };
@@ -315,7 +325,6 @@ export async function resolveConfigContext(targetPath: string | undefined, cliFl
   const cwdConfig = await loadConfigFromJsonFile(cwdConfigPath);
   if (cwdConfig) {
     return {
-      configFile: cwdConfig.configFile,
       ...cwdConfig,
       config: mergeConfigLayers(cwdConfig.configFile, cliFlags, cwdConfig.sourceDirectory)
     };
@@ -324,7 +333,6 @@ export async function resolveConfigContext(targetPath: string | undefined, cliFl
   const packageJsonConfig = await loadConfigFromNearestPackageJson(cwd);
   if (packageJsonConfig) {
     return {
-      configFile: packageJsonConfig.configFile,
       ...packageJsonConfig,
       config: mergeConfigLayers(packageJsonConfig.configFile, cliFlags, packageJsonConfig.sourceDirectory)
     };

@@ -163,6 +163,72 @@ What it checks:
 Flags:
 
 - `--html <path>` write a self-contained HTML report
+- `--plugin <path>` load a custom lint plugin file (repeatable)
+
+### Plugin Rules
+
+You can run custom lint rules alongside the built-in checks. Plugin rules use the
+same `LintContext` and `LintIssue` types as the core linter, and their results
+appear in the same `LintReport`.
+
+Config:
+
+```json
+{
+  "lint": {
+    "plugins": ["./my-rules.js"]
+  }
+}
+```
+
+CLI:
+
+```bash
+skilltest lint ./skill --plugin ./my-rules.js
+```
+
+Minimal plugin example:
+
+```js
+export default {
+  rules: [
+    {
+      checkId: "custom:no-todo",
+      title: "No TODO comments",
+      check(context) {
+        const body = context.frontmatter.content;
+        if (/\bTODO\b/.test(body)) {
+          return [
+            {
+              id: "custom.no-todo",
+              checkId: "custom:no-todo",
+              title: "No TODO comments",
+              status: "warn",
+              message: "SKILL.md contains a TODO marker."
+            }
+          ];
+        }
+        return [
+          {
+            id: "custom.no-todo",
+            checkId: "custom:no-todo",
+            title: "No TODO comments",
+            status: "pass",
+            message: "No TODO markers found."
+          }
+        ];
+      }
+    }
+  ]
+};
+```
+
+Notes:
+
+- Plugin files are loaded with dynamic `import()`.
+- `.js` and `.mjs` work directly; `.ts` plugins must be precompiled by the user.
+- Plugin rules run after all built-in lint checks, in the order the plugin files are listed.
+- CLI `--plugin` values replace config-file `lint.plugins` values.
 
 ### `skilltest trigger <path-to-skill>`
 
@@ -175,6 +241,7 @@ Flow:
 3. For each query, asks model to select one skill from a mixed list:
    - your skill under test
    - realistic fake skills
+   - optional sibling competitor skills from `--compare`
 4. Computes TP, TN, FP, FN, precision, recall, F1.
 
 For reproducible fake-skill sampling, pass `--seed <number>`. When a seed is used,
@@ -188,6 +255,7 @@ Flags:
 - `--model <model>` default: `claude-sonnet-4-5-20250929`
 - `--provider <anthropic|openai>` default: `anthropic`
 - `--queries <path>` use custom queries JSON
+- `--compare <path>` path to a sibling skill directory to use as a competitor (repeatable)
 - `--num-queries <n>` default: `20` (must be even)
 - `--seed <number>` RNG seed for reproducible fake-skill sampling
 - `--concurrency <n>` default: `5`
@@ -195,6 +263,28 @@ Flags:
 - `--save-queries <path>` save generated query set
 - `--api-key <key>` explicit key override
 - `--verbose` show full model decision text
+
+### Comparative Trigger Testing
+
+Test whether your skill is distinctive enough to be selected over similar real skills:
+
+```bash
+skilltest trigger ./my-skill --compare ../similar-skill-1 --compare ../similar-skill-2
+```
+
+Config:
+
+```json
+{
+  "trigger": {
+    "compare": ["../similar-skill-1", "../similar-skill-2"]
+  }
+}
+```
+
+Comparative mode includes the real competitor skills in the candidate list alongside
+fake skills. This reveals confusion between skills with overlapping descriptions that
+standard trigger testing would miss.
 
 ### `skilltest eval <path-to-skill>`
 
@@ -238,9 +328,11 @@ Flags:
 - `--grader-model <model>` default: same as resolved `--model`
 - `--api-key <key>` explicit key override
 - `--queries <path>` custom trigger queries JSON
+- `--compare <path>` path to a sibling skill directory to use as a competitor (repeatable)
 - `--num-queries <n>` default: `20` (must be even)
 - `--seed <number>` RNG seed for reproducible trigger sampling
 - `--prompts <path>` custom eval prompts JSON
+- `--plugin <path>` load a custom lint plugin file (repeatable)
 - `--concurrency <n>` default: `5` (`1` keeps the old sequential `check` behavior)
 - `--html <path>` write a self-contained HTML report
 - `--min-f1 <n>` default: `0.8`

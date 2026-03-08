@@ -13,6 +13,7 @@ import { writeJsonFile } from "../utils/fs.js";
 const triggerCliSchema = z.object({
   queries: z.string().optional(),
   saveQueries: z.string().optional(),
+  compare: z.array(z.string().min(1)).optional(),
   seed: z.number().int().optional(),
   concurrency: z.number().int().min(1).optional(),
   html: z.string().optional(),
@@ -30,6 +31,7 @@ interface TriggerCommandOptions {
   provider: "anthropic" | "openai";
   queries?: string;
   numQueries: number;
+  compare: string[];
   saveQueries?: string;
   seed?: number;
   concurrency: number;
@@ -83,6 +85,7 @@ async function handleTriggerCommand(targetPath: string, options: TriggerCommandO
       provider,
       queries,
       numQueries: options.numQueries,
+      compare: options.compare,
       seed: options.seed,
       concurrency: options.concurrency,
       verbose: options.verbose
@@ -121,6 +124,7 @@ export function registerTriggerCommand(program: Command): void {
     .option("--model <model>", "Model to use")
     .option("--provider <provider>", "LLM provider: anthropic|openai")
     .option("--queries <path>", "Path to custom test queries JSON")
+    .option("--compare <path...>", "Path(s) to sibling skill directories to include as competitors")
     .option("--num-queries <n>", "Number of auto-generated queries", (value) => Number.parseInt(value, 10))
     .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
     .option("--concurrency <n>", "Maximum in-flight trigger requests", (value) => Number.parseInt(value, 10))
@@ -144,6 +148,7 @@ export function registerTriggerCommand(program: Command): void {
         provider: config.provider,
         queries: parsedCli.data.queries,
         numQueries: config.trigger.numQueries,
+        compare: config.trigger.compare,
         saveQueries: parsedCli.data.saveQueries,
         seed: parsedCli.data.seed ?? config.trigger.seed,
         concurrency: config.concurrency,

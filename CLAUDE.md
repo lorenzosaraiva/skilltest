@@ -77,6 +77,7 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
   - default concurrency is `5`
   - `--concurrency 1` preserves the old sequential behavior
   - trigger RNG-dependent fake-skill setup is precomputed before requests begin, preserving seed determinism
+- Comparative trigger testing is opt-in via `--compare`; standard fake-skill pool is the default.
 - JSON mode is strict:
   - no spinners
   - no colored output
@@ -103,11 +104,7 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 - Security heuristics: `src/core/linter/security.ts`
 - Progressive disclosure: `src/core/linter/disclosure.ts`
 - Compatibility hints: `src/core/linter/compat.ts`
-- Trigger fake skill pool + scoring: `src/core/trigger-tester.ts`
+- Plugin loading + validation + rule execution: `src/core/linter/plugin.ts`
+- Trigger fake skill pool + comparative competitor loading + scoring: `src/core/trigger-tester.ts`
 - Eval grading schema: `src/core/grader.ts`
 - Combined quality gate orchestration: `src/core/check-runner.ts`
-
-## Future Work (Not Implemented Yet)
-
-- Config file support (`.skilltestrc`)
-- Plugin linter rules

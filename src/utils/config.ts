@@ -12,7 +12,8 @@ const lintFailOnSchema = z.enum(["error", "warn"]);
 const lintConfigSchema = z
   .object({
     failOn: lintFailOnSchema.optional(),
-    suppress: z.array(z.string().min(1)).optional()
+    suppress: z.array(z.string().min(1)).optional(),
+    plugins: z.array(z.string().min(1)).optional()
   })
   .strict();
 
@@ -24,7 +25,8 @@ const triggerConfigSchema = z
       .min(2)
       .refine((value) => value % 2 === 0, "trigger.numQueries must be an even number."),
     threshold: z.number().min(0).max(1).optional(),
-    seed: z.number().int().optional()
+    seed: z.number().int().optional(),
+    compare: z.array(z.string().min(1)).optional()
   })
   .strict()
   .partial();
@@ -58,12 +60,14 @@ const resolvedSkilltestConfigSchema = z.object({
   concurrency: z.number().int().min(1),
   lint: z.object({
     failOn: lintFailOnSchema,
-    suppress: z.array(z.string().min(1))
+    suppress: z.array(z.string().min(1)),
+    plugins: z.array(z.string().min(1))
   }),
   trigger: z.object({
     numQueries: z.number().int().min(2).refine((value) => value % 2 === 0, "trigger.numQueries must be an even number."),
     threshold: z.number().min(0).max(1),
-    seed: z.number().int().optional()
+    seed: z.number().int().optional(),
+    compare: z.array(z.string().min(1))
   }),
   eval: z.object({
     numRuns: z.number().int().min(1),
@@ -97,11 +101,13 @@ export const DEFAULT_SKILLTEST_CONFIG: ResolvedSkilltestConfig = {
   concurrency: 5,
   lint: {
     failOn: "error",
-    suppress: []
+    suppress: [],
+    plugins: []
   },
   trigger: {
     numQueries: 20,
-    threshold: 0.8
+    threshold: 0.8,
+    compare: []
   },
   eval: {
     numRuns: 5,
@@ -214,6 +220,13 @@ function resolveConfigRelativePath(baseDirectory: string, value: string | undefi
   return path.resolve(baseDirectory, value);
 }
 
+function resolveConfigRelativePaths(baseDirectory: string, values: string[] | undefined): string[] {
+  if (!values || values.length === 0) {
+    return [];
+  }
+  return values.map((value) => path.resolve(baseDirectory, value));
+}
+
 export function mergeConfigLayers(
   configFile: SkilltestConfigFile = {},
   cliFlags: SkilltestConfigFile = {},
@@ -226,14 +239,22 @@ export function mergeConfigLayers(
     concurrency: cliFlags.concurrency ?? configFile.concurrency ?? DEFAULT_SKILLTEST_CONFIG.concurrency,
     lint: {
       failOn: cliFlags.lint?.failOn ?? configFile.lint?.failOn ?? DEFAULT_SKILLTEST_CONFIG.lint.failOn,
-      suppress: cliFlags.lint?.suppress ?? configFile.lint?.suppress ?? DEFAULT_SKILLTEST_CONFIG.lint.suppress
+      suppress: cliFlags.lint?.suppress ?? configFile.lint?.suppress ?? DEFAULT_SKILLTEST_CONFIG.lint.suppress,
+      plugins: resolveConfigRelativePaths(
+        baseDirectory,
+        cliFlags.lint?.plugins ?? configFile.lint?.plugins ?? DEFAULT_SKILLTEST_CONFIG.lint.plugins
+      )
     },
     trigger: {
       numQueries:
         cliFlags.trigger?.numQueries ?? configFile.trigger?.numQueries ?? DEFAULT_SKILLTEST_CONFIG.trigger.numQueries,
       threshold:
         cliFlags.trigger?.threshold ?? configFile.trigger?.threshold ?? DEFAULT_SKILLTEST_CONFIG.trigger.threshold,
-      seed: cliFlags.trigger?.seed ?? configFile.trigger?.seed
+      seed: cliFlags.trigger?.seed ?? configFile.trigger?.seed,
+      compare: resolveConfigRelativePaths(
+        baseDirectory,
+        cliFlags.trigger?.compare ?? configFile.trigger?.compare ?? DEFAULT_SKILLTEST_CONFIG.trigger.compare
+      )
     },
     eval: {
       numRuns: cliFlags.eval?.numRuns ?? configFile.eval?.numRuns ?? DEFAULT_SKILLTEST_CONFIG.eval.numRuns,
@@ -252,7 +273,7 @@ export function mergeConfigLayers(
   return resolvedSkilltestConfigSchema.parse(merged);
 }
 
-function getTypedOptionValue<T extends string | number | boolean>(command: Command, key: string): T | undefined {
+function getTypedOptionValue<T extends string | number | boolean | string[]>(command: Command, key: string): T | undefined {
   const options = command.optsWithGlobals<Record<string, unknown>>();
   const value = options[key];
   if (value === undefined) {
@@ -287,6 +308,20 @@ export function extractCliConfigOverrides(command: Command): SkilltestConfigFile
     overrides.trigger = {
       ...overrides.trigger,
       numQueries: getTypedOptionValue<number>(command, "numQueries")
+    };
+  }
+
+  if ((command.name() === "trigger" || command.name() === "check") && command.getOptionValueSource("compare") === "cli") {
+    overrides.trigger = {
+      ...overrides.trigger,
+      compare: getTypedOptionValue<string[]>(command, "compare")
+    };
+  }
+
+  if ((command.name() === "lint" || command.name() === "check") && command.getOptionValueSource("plugin") === "cli") {
+    overrides.lint = {
+      ...overrides.lint,
+      plugins: getTypedOptionValue<string[]>(command, "plugin")
     };
   }
 

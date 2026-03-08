@@ -40,6 +40,8 @@ export interface RunCheckOptions {
   graderModel: string;
   lintFailOn: LintFailOn;
   lintSuppress: string[];
+  lintPlugins: string[];
+  compare?: string[];
   numQueries: number;
   concurrency?: number;
   triggerSeed?: number;
@@ -62,7 +64,7 @@ function calculateEvalAssertPassRate(result: EvalResult): number {
 
 export async function runCheck(inputPath: string, options: RunCheckOptions): Promise<CheckRunResult> {
   options.onStage?.("lint");
-  const lint = await runLinter(inputPath, { suppress: options.lintSuppress });
+  const lint = await runLinter(inputPath, { suppress: options.lintSuppress, plugins: options.lintPlugins });
   const lintPassed = !lintFails(lint, options.lintFailOn);
 
   let trigger: TriggerTestResult | null = null;
@@ -89,6 +91,7 @@ export async function runCheck(inputPath: string, options: RunCheckOptions): Pro
         provider: options.provider,
         model: options.model,
         queries: options.queries,
+        compare: options.compare,
         numQueries: options.numQueries,
         seed: options.triggerSeed,
         concurrency: options.concurrency,

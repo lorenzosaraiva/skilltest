@@ -24,8 +24,19 @@ function createTriggerCommand(argv: string[]): Command {
   command.option("--json");
   command.option("--provider <provider>");
   command.option("--model <model>");
+  command.option("--compare <path...>");
   command.option("--num-queries <n>", "Number of generated queries", (value: string) => Number.parseInt(value, 10));
   command.option("--concurrency <n>", "Maximum concurrency", (value: string) => Number.parseInt(value, 10));
+  command.parse(argv, { from: "user" });
+  return command;
+}
+
+function createLintCommand(argv: string[]): Command {
+  const command = new Command("lint");
+  command.option("--plugin <path>", "Load a custom lint plugin file", (value: string, previous: string[] = []) => [
+    ...previous,
+    value
+  ], []);
   command.parse(argv, { from: "user" });
   return command;
 }
@@ -51,10 +62,14 @@ describe("config utilities", () => {
           provider: "openai",
           model: "gpt-4.1-mini",
           concurrency: 2,
+          lint: {
+            plugins: ["./plugins/org-rules.mjs"]
+          },
           trigger: {
             numQueries: 12,
             threshold: 0.75,
-            seed: 42
+            seed: 42,
+            compare: ["../similar-skill"]
           }
         },
         null,
@@ -69,13 +84,26 @@ describe("config utilities", () => {
     expect(context.config.provider).toBe("openai");
     expect(context.config.model).toBe("gpt-4.1-mini");
     expect(context.config.concurrency).toBe(2);
+    expect(context.config.lint.plugins).toEqual([path.join(skillRoot, "plugins", "org-rules.mjs")]);
     expect(context.config.trigger.numQueries).toBe(12);
     expect(context.config.trigger.seed).toBe(42);
+    expect(context.config.trigger.compare).toEqual([path.resolve(skillRoot, "..", "similar-skill")]);
   });
 
   it("lets CLI flags override config values", () => {
     const overrides = extractCliConfigOverrides(
-      createTriggerCommand(["--provider", "openai", "--model", "gpt-4.1-mini", "--num-queries", "14", "--json"])
+      createTriggerCommand([
+        "--provider",
+        "openai",
+        "--model",
+        "gpt-4.1-mini",
+        "--compare",
+        "./sibling-a",
+        "./sibling-b",
+        "--num-queries",
+        "14",
+        "--json"
+      ])
     );
     const merged = mergeConfigLayers(
       {
@@ -83,16 +111,40 @@ describe("config utilities", () => {
         model: "claude-sonnet-4-5-20250929",
         json: false,
         trigger: {
-          numQueries: 20
+          numQueries: 20,
+          compare: ["./config-sibling"]
         }
       },
-      overrides
+      overrides,
+      path.resolve(process.cwd(), "trigger-base")
     );
 
     expect(merged.provider).toBe("openai");
     expect(merged.model).toBe("gpt-4.1-mini");
     expect(merged.json).toBe(true);
     expect(merged.trigger.numQueries).toBe(14);
+    expect(merged.trigger.compare).toEqual([
+      path.resolve(process.cwd(), "trigger-base", "sibling-a"),
+      path.resolve(process.cwd(), "trigger-base", "sibling-b")
+    ]);
+  });
+
+  it("replaces config plugin paths with CLI plugin flags", () => {
+    const overrides = extractCliConfigOverrides(createLintCommand(["--plugin", "./cli-rule.mjs", "--plugin", "./other-rule.mjs"]));
+    const merged = mergeConfigLayers(
+      {
+        lint: {
+          plugins: ["./config-rule.mjs"]
+        }
+      },
+      overrides,
+      path.resolve(process.cwd(), "fixtures")
+    );
+
+    expect(merged.lint.plugins).toEqual([
+      path.resolve(process.cwd(), "fixtures", "cli-rule.mjs"),
+      path.resolve(process.cwd(), "fixtures", "other-rule.mjs")
+    ]);
   });
 
   it("falls back to defaults when no config file exists", async () => {

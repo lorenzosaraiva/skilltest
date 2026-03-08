@@ -7,7 +7,8 @@ import { renderLintReport } from "../reporters/terminal.js";
 import { getGlobalCliOptions, getResolvedConfig, writeError, writeResult } from "./common.js";
 
 const lintCliSchema = z.object({
-  html: z.string().optional()
+  html: z.string().optional(),
+  plugin: z.array(z.string().min(1)).optional()
 });
 
 interface LintCommandOptions {
@@ -15,12 +16,17 @@ interface LintCommandOptions {
   color: boolean;
   failOn: "error" | "warn";
   suppress: string[];
+  plugins: string[];
   html?: string;
+}
+
+function collectPluginPaths(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
 }
 
 async function handleLintCommand(targetPath: string, options: LintCommandOptions): Promise<void> {
   try {
-    const report = await runLinter(targetPath, { suppress: options.suppress });
+    const report = await runLinter(targetPath, { suppress: options.suppress, plugins: options.plugins });
     if (options.json) {
       writeResult(report, true);
     } else {
@@ -46,6 +52,7 @@ export function registerLintCommand(program: Command): void {
     .description("Run static lint checks against a SKILL.md file or skill directory.")
     .argument("<path-to-skill>", "Path to SKILL.md or skill directory")
     .option("--html <path>", "Write an HTML report to the given file path")
+    .option("--plugin <path>", "Load a custom lint plugin file", collectPluginPaths, [])
     .action(async (targetPath: string, _commandOptions: unknown, command: Command) => {
       const globalOptions = getGlobalCliOptions(command);
       const config = getResolvedConfig(command);
@@ -60,6 +67,7 @@ export function registerLintCommand(program: Command): void {
         ...globalOptions,
         failOn: config.lint.failOn,
         suppress: config.lint.suppress,
+        plugins: config.lint.plugins,
         html: parsedCli.data.html
       });
     });

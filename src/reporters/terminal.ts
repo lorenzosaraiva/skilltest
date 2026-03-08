@@ -24,52 +24,55 @@ function countSkippedSecurityPatterns(issues: LintIssue[]): number {
   }, 0);
 }
 
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export function renderLintReport(report: LintReport, enableColor: boolean): string {
   const c = getChalkInstance(enableColor);
   const { passed, warnings, failures, total } = report.summary;
-
   const headerLines = [
-    `┌───────────────────────────────────────────────────────────────┐`,
-    `│ skilltest lint                                                │`,
-    `├───────────────────────────────────────────────────────────────┤`,
-    `│ target: ${report.target}`,
-    `│ summary: ${passed}/${total} checks passed, ${warnings} warnings, ${failures} failures`,
-    `└───────────────────────────────────────────────────────────────┘`
+    "skilltest lint",
+    `target: ${report.target}`,
+    `summary: ${passed}/${total} checks passed, ${warnings} warnings, ${failures} failures`
   ];
 
   const renderedIssues = report.issues.map((issue) => renderIssueLine(issue, c)).join("\n");
   const skippedSecurityPatterns = countSkippedSecurityPatterns(report.issues);
   const infoLine =
     skippedSecurityPatterns > 0
-      ? `\n  ${c.cyan("ℹ")} ${skippedSecurityPatterns} security pattern(s) found in code examples/comments (not flagged)`
+      ? `\n  ${c.cyan("INFO")} ${skippedSecurityPatterns} security pattern(s) found in code examples/comments (not flagged)`
       : "";
-  return `${headerLines.join("\n")}\n${renderedIssues}${infoLine}`;
-}
 
-function formatPercent(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return `${headerLines.join("\n")}\n${renderedIssues}${infoLine}`;
 }
 
 export function renderTriggerReport(result: TriggerTestResult, enableColor: boolean, verbose: boolean): string {
   const c = getChalkInstance(enableColor);
-  const lines: string[] = [];
-  lines.push("┌───────────────────────────────────────────────────────────────┐");
-  lines.push("│ skilltest trigger                                             │");
-  lines.push("├───────────────────────────────────────────────────────────────┤");
-  lines.push(`│ skill: ${result.skillName}`);
-  lines.push(`│ provider/model: ${result.provider}/${result.model}`);
+  const lines: string[] = [
+    "skilltest trigger",
+    `skill: ${result.skillName}`,
+    `provider/model: ${result.provider}/${result.model}`
+  ];
+
+  if (result.competitors && result.competitors.length > 0) {
+    lines.push(`competitors: ${result.competitors.map((competitor) => competitor.name).join(", ")}`);
+  }
+
   lines.push(
-    `│ precision: ${formatPercent(result.metrics.precision)}  recall: ${formatPercent(result.metrics.recall)}  f1: ${formatPercent(result.metrics.f1)}`
+    `precision: ${formatPercent(result.metrics.precision)}  recall: ${formatPercent(result.metrics.recall)}  f1: ${formatPercent(result.metrics.f1)}`
   );
   lines.push(
-    `│ TP ${result.metrics.truePositives}  TN ${result.metrics.trueNegatives}  FP ${result.metrics.falsePositives}  FN ${result.metrics.falseNegatives}`
+    `TP ${result.metrics.truePositives}  TN ${result.metrics.trueNegatives}  FP ${result.metrics.falsePositives}  FN ${result.metrics.falseNegatives}`
   );
-  lines.push("└───────────────────────────────────────────────────────────────┘");
 
   for (const [index, testCase] of result.cases.entries()) {
     const status = testCase.matched ? c.green("PASS") : c.red("FAIL");
     lines.push(`${index + 1}. ${status} query: ${testCase.query}`);
     lines.push(`   expected: ${testCase.expected} | actual: ${testCase.actual}`);
+    if (verbose && testCase.selectedCompetitor) {
+      lines.push(`   competitor selected: ${testCase.selectedCompetitor}`);
+    }
     if (verbose && testCase.rawModelResponse) {
       lines.push(`   model: ${testCase.rawModelResponse.replace(/\s+/g, " ").trim()}`);
     }
@@ -85,15 +88,13 @@ export function renderTriggerReport(result: TriggerTestResult, enableColor: bool
 
 export function renderEvalReport(result: EvalResult, enableColor: boolean, verbose: boolean): string {
   const c = getChalkInstance(enableColor);
-  const lines: string[] = [];
-  lines.push("┌───────────────────────────────────────────────────────────────┐");
-  lines.push("│ skilltest eval                                                │");
-  lines.push("├───────────────────────────────────────────────────────────────┤");
-  lines.push(`│ skill: ${result.skillName}`);
-  lines.push(`│ provider/model: ${result.provider}/${result.model}`);
-  lines.push(`│ grader model: ${result.graderModel}`);
-  lines.push(`│ assertions passed: ${result.summary.passedAssertions}/${result.summary.totalAssertions}`);
-  lines.push("└───────────────────────────────────────────────────────────────┘");
+  const lines: string[] = [
+    "skilltest eval",
+    `skill: ${result.skillName}`,
+    `provider/model: ${result.provider}/${result.model}`,
+    `grader model: ${result.graderModel}`,
+    `assertions passed: ${result.summary.passedAssertions}/${result.summary.totalAssertions}`
+  ];
 
   for (const [index, promptResult] of result.results.entries()) {
     lines.push(`${index + 1}. prompt: ${promptResult.prompt}`);
@@ -134,6 +135,7 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
   lines.push(
     `thresholds: min-f1=${result.thresholds.minF1.toFixed(2)} min-assert-pass-rate=${result.thresholds.minAssertPassRate.toFixed(2)}`
   );
+
   lines.push("");
   lines.push("Lint");
   lines.push(
@@ -144,9 +146,10 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
   for (const issue of lintIssues) {
     lines.push(renderIssueLine(issue, c));
   }
+
   const skippedSecurityPatterns = countSkippedSecurityPatterns(result.lint.issues);
   if (skippedSecurityPatterns > 0) {
-    lines.push(`  ${c.cyan("ℹ")} ${skippedSecurityPatterns} security pattern(s) found in code examples/comments (not flagged)`);
+    lines.push(`  ${c.cyan("INFO")} ${skippedSecurityPatterns} security pattern(s) found in code examples/comments (not flagged)`);
   }
 
   lines.push("");
@@ -158,12 +161,18 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
     lines.push(
       `  TP ${result.trigger.metrics.truePositives} TN ${result.trigger.metrics.trueNegatives} FP ${result.trigger.metrics.falsePositives} FN ${result.trigger.metrics.falseNegatives}`
     );
+    if (result.trigger.competitors && result.trigger.competitors.length > 0) {
+      lines.push(`  competitors: ${result.trigger.competitors.map((competitor) => competitor.name).join(", ")}`);
+    }
 
     const triggerCases = verbose ? result.trigger.cases : result.trigger.cases.filter((testCase) => !testCase.matched);
     for (const testCase of triggerCases) {
       const status = testCase.matched ? c.green("PASS") : c.red("FAIL");
       lines.push(`  - ${status} ${testCase.query}`);
       lines.push(`    expected=${testCase.expected} actual=${testCase.actual}`);
+      if (testCase.selectedCompetitor) {
+        lines.push(`    competitor selected=${testCase.selectedCompetitor}`);
+      }
     }
   } else {
     lines.push(`- ${triggerGate} ${result.triggerSkippedReason ?? "Skipped."}`);

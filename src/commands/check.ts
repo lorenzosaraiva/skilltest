@@ -21,8 +21,10 @@ const checkCliSchema = z.object({
   graderModel: z.string().optional(),
   apiKey: z.string().optional(),
   queries: z.string().optional(),
+  compare: z.array(z.string().min(1)).optional(),
   seed: z.number().int().optional(),
   prompts: z.string().optional(),
+  plugin: z.array(z.string().min(1)).optional(),
   concurrency: z.number().int().min(1).optional(),
   html: z.string().optional(),
   saveResults: z.string().optional(),
@@ -41,6 +43,7 @@ interface CheckCommandOptions {
   graderModel?: string;
   apiKey?: string;
   queries?: string;
+  compare: string[];
   numQueries: number;
   prompts?: string;
   minF1: number;
@@ -50,10 +53,15 @@ interface CheckCommandOptions {
   html?: string;
   lintFailOn: "error" | "warn";
   lintSuppress: string[];
+  lintPlugins: string[];
   triggerSeed?: number;
   saveResults?: string;
   continueOnLintFail: boolean;
   verbose: boolean;
+}
+
+function collectPluginPaths(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
 }
 
 function resolveModel(provider: "anthropic" | "openai", model: string): string {
@@ -114,7 +122,9 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
       graderModel,
       lintFailOn: options.lintFailOn,
       lintSuppress: options.lintSuppress,
+      lintPlugins: options.lintPlugins,
       queries,
+      compare: options.compare,
       numQueries: options.numQueries,
       triggerSeed: options.triggerSeed,
       prompts,
@@ -174,9 +184,11 @@ export function registerCheckCommand(program: Command): void {
     .option("--grader-model <model>", "Model used for grading (defaults to --model)")
     .option("--api-key <key>", "API key override")
     .option("--queries <path>", "Path to custom trigger queries JSON")
+    .option("--compare <path...>", "Path(s) to sibling skill directories to include as competitors")
     .option("--num-queries <n>", "Number of auto-generated trigger queries", (value) => Number.parseInt(value, 10))
     .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
     .option("--prompts <path>", "Path to eval prompts JSON")
+    .option("--plugin <path>", "Load a custom lint plugin file", collectPluginPaths, [])
     .option("--concurrency <n>", "Maximum in-flight trigger/eval tasks", (value) => Number.parseInt(value, 10))
     .option("--html <path>", "Write an HTML report to the given file path")
     .option("--min-f1 <n>", "Minimum required trigger F1 score (0-1)", (value) => Number.parseFloat(value))
@@ -203,6 +215,7 @@ export function registerCheckCommand(program: Command): void {
           graderModel: parsedCli.data.graderModel,
           apiKey: parsedCli.data.apiKey,
           queries: parsedCli.data.queries,
+          compare: config.trigger.compare,
           numQueries: config.trigger.numQueries,
           prompts: parsedCli.data.prompts,
           minF1: config.trigger.threshold,
@@ -212,6 +225,7 @@ export function registerCheckCommand(program: Command): void {
           html: parsedCli.data.html,
           lintFailOn: config.lint.failOn,
           lintSuppress: config.lint.suppress,
+          lintPlugins: config.lint.plugins,
           triggerSeed: parsedCli.data.seed ?? config.trigger.seed,
           saveResults: parsedCli.data.saveResults,
           continueOnLintFail: Boolean(parsedCli.data.continueOnLintFail),

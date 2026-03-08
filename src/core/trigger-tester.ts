@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ParsedSkill } from "./skill-parser.js";
+import { ParsedSkill, parseSkillStrict } from "./skill-parser.js";
 import { LanguageModelProvider } from "../providers/types.js";
 import { pMap } from "../utils/concurrency.js";
 
@@ -14,6 +14,7 @@ export interface TriggerTestCaseResult {
   expected: string;
   actual: string;
   matched: boolean;
+  selectedCompetitor?: string;
   rawModelResponse?: string;
 }
 
@@ -32,10 +33,17 @@ export interface TriggerTestResult {
   model: string;
   provider: string;
   seed?: number;
+  competitors?: CompetitorSkill[];
   queries: TriggerQuery[];
   cases: TriggerTestCaseResult[];
   metrics: TriggerMetrics;
   suggestions: string[];
+}
+
+export interface CompetitorSkill {
+  name: string;
+  description: string;
+  sourcePath: string;
 }
 
 const triggerQuerySchema = z.object({
@@ -126,7 +134,8 @@ async function generateQueriesWithModel(
   skill: ParsedSkill,
   provider: LanguageModelProvider,
   model: string,
-  numQueries: number
+  numQueries: number,
+  competitors?: CompetitorSkill[]
 ): Promise<TriggerQuery[]> {
   validateNumQueries(numQueries);
   const shouldTriggerCount = Math.floor(numQueries / 2);
@@ -142,6 +151,17 @@ async function generateQueriesWithModel(
   const userPrompt = [
     `Skill name: ${skill.frontmatter.name}`,
     `Skill description: ${skill.frontmatter.description}`,
+    ...(competitors && competitors.length > 0
+      ? [
+          "",
+          "Competitor skills in the same domain:",
+          ...competitors.map((competitor) => `- ${competitor.name}: ${competitor.description}`),
+          "",
+          "Generate queries that test whether the target skill triggers correctly even when these similar skills exist.",
+          "Positive queries should clearly belong to the target skill, not the competitors.",
+          "Negative queries should belong to a competitor or to no skill at all."
+        ]
+      : []),
     `Generate ${numQueries} prompts total.`,
     `Exactly ${shouldTriggerCount} should have should_trigger=true.`,
     `Exactly ${shouldNotTriggerCount} should have should_trigger=false.`,
@@ -185,23 +205,49 @@ function parseDecision(rawResponse: string, skillNames: string[]): string {
 export function prepareTriggerQueries(
   skill: Pick<ParsedSkill, "frontmatter">,
   queries: TriggerQuery[],
-  seed?: number
+  seed?: number,
+  competitors?: CompetitorSkill[]
 ): PreparedTriggerQuery[] {
   const rng = createRng(seed);
+  const competitorCandidates = (competitors ?? []).map((competitor) => ({
+    name: competitor.name,
+    description: competitor.description
+  }));
 
   return queries.map((testQuery) => {
-    const fakeCount = 5 + Math.floor(rng() * 5);
+    const usingCompetitors = competitorCandidates.length > 0;
+    const fakeCount = usingCompetitors
+      ? testQuery.should_trigger
+        ? 2 + Math.floor(rng() * 3)
+        : 3 + Math.floor(rng() * 3)
+      : 5 + Math.floor(rng() * 5);
     const fakeSkills = sample(FAKE_SKILLS, fakeCount, rng);
-    const allSkills = shuffle(
-      [
-        ...fakeSkills,
-        {
-          name: skill.frontmatter.name,
-          description: skill.frontmatter.description
-        }
-      ],
-      rng
-    );
+    const allSkills = usingCompetitors
+      ? shuffle(
+          [
+            ...competitorCandidates,
+            ...fakeSkills,
+            ...(testQuery.should_trigger
+              ? [
+                  {
+                    name: skill.frontmatter.name,
+                    description: skill.frontmatter.description
+                  }
+                ]
+              : [])
+          ],
+          rng
+        )
+      : shuffle(
+          [
+            ...fakeSkills,
+            {
+              name: skill.frontmatter.name,
+              description: skill.frontmatter.description
+            }
+          ],
+          rng
+        );
 
     return {
       testQuery,
@@ -252,15 +298,70 @@ export function calculateMetrics(skillName: string, cases: TriggerTestCaseResult
   };
 }
 
-function buildSuggestions(metrics: TriggerMetrics): string[] {
+export function assertCompetitorNamesDistinct(skillName: string, competitors: CompetitorSkill[]): void {
+  for (const competitor of competitors) {
+    if (competitor.name === skillName) {
+      throw new Error(`Competitor skill '${competitor.name}' has the same name as the skill under test.`);
+    }
+  }
+}
+
+export function buildTriggerCaseResult(options: {
+  testQuery: TriggerQuery;
+  skillName: string;
+  decision: string;
+  competitorNames?: string[];
+  rawModelResponse?: string;
+}): TriggerTestCaseResult {
+  const expected = options.testQuery.should_trigger ? options.skillName : "none";
+  const matched = options.testQuery.should_trigger ? options.decision === options.skillName : options.decision !== options.skillName;
+  const selectedCompetitor = options.competitorNames?.includes(options.decision) ? options.decision : undefined;
+
+  return {
+    query: options.testQuery.query,
+    shouldTrigger: options.testQuery.should_trigger,
+    expected,
+    actual: options.decision,
+    matched,
+    selectedCompetitor,
+    rawModelResponse: options.rawModelResponse
+  };
+}
+
+function buildSuggestions(
+  skillName: string,
+  metrics: TriggerMetrics,
+  cases: TriggerTestCaseResult[],
+  competitors?: CompetitorSkill[]
+): string[] {
   const suggestions: string[] = [];
   if (metrics.falseNegatives > 0) {
     suggestions.push(
       "False negatives found: clarify capability keywords and add explicit 'use when ...' phrasing in description."
     );
+    if (competitors && competitors.length > 0) {
+      const competitorCounts = new Map<string, number>();
+      for (const testCase of cases) {
+        if (!testCase.shouldTrigger || testCase.actual === skillName || !testCase.selectedCompetitor) {
+          continue;
+        }
+        competitorCounts.set(testCase.selectedCompetitor, (competitorCounts.get(testCase.selectedCompetitor) ?? 0) + 1);
+      }
+
+      for (const [competitorName, count] of competitorCounts.entries()) {
+        suggestions.push(
+          `Skill '${competitorName}' was selected instead of '${skillName}' for ${count} quer${count === 1 ? "y" : "ies"}. Differentiate your description from '${competitorName}'.`
+        );
+      }
+    }
   }
   if (metrics.falsePositives > 0) {
     suggestions.push("False positives found: narrow scope boundaries and add explicit non-goals in description.");
+    if (competitors && competitors.length > 0) {
+      suggestions.push(
+        `With competitor skills present, ${metrics.falsePositives} negative quer${metrics.falsePositives === 1 ? "y still" : "ies still"} triggered '${skillName}'. Narrow your description's scope boundaries.`
+      );
+    }
   }
   if (suggestions.length === 0) {
     suggestions.push("Trigger behavior looks clean on this sample. Keep monitoring with domain-specific custom queries.");
@@ -273,19 +374,42 @@ export interface RunTriggerTestOptions {
   provider: LanguageModelProvider;
   queries?: TriggerQuery[];
   numQueries: number;
+  compare?: string[];
   seed?: number;
   concurrency?: number;
   verbose?: boolean;
 }
 
+async function loadCompetitorSkills(comparePaths: string[]): Promise<CompetitorSkill[]> {
+  const competitors: CompetitorSkill[] = [];
+
+  for (const comparePath of comparePaths) {
+    const parsed = await parseSkillStrict(comparePath);
+    competitors.push({
+      name: parsed.frontmatter.name,
+      description: parsed.frontmatter.description,
+      sourcePath: comparePath
+    });
+  }
+
+  return competitors;
+}
+
 export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTestOptions): Promise<TriggerTestResult> {
+  const competitors =
+    options.compare && options.compare.length > 0 ? await loadCompetitorSkills(options.compare) : undefined;
+  if (competitors && competitors.length > 0) {
+    assertCompetitorNamesDistinct(skill.frontmatter.name, competitors);
+  }
+
   const queries =
     options.queries && options.queries.length > 0
       ? triggerQueryArraySchema.parse(options.queries)
-      : await generateQueriesWithModel(skill, options.provider, options.model, options.numQueries);
+      : await generateQueriesWithModel(skill, options.provider, options.model, options.numQueries, competitors);
 
   const skillName = skill.frontmatter.name;
-  const preparedQueries = prepareTriggerQueries(skill, queries, options.seed);
+  const preparedQueries = prepareTriggerQueries(skill, queries, options.seed, competitors);
+  const competitorNames = competitors?.map((competitor) => competitor.name) ?? [];
 
   const systemPrompt = [
     "You are selecting one skill to activate for a user query.",
@@ -300,20 +424,16 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
       const rawResponse = await options.provider.sendMessage(systemPrompt, userPrompt, { model: options.model });
       const decision = parseDecision(
         rawResponse,
-        allSkills.map((entry) => entry.name)
+        Array.from(new Set([skillName, ...allSkills.map((entry) => entry.name)]))
       );
 
-      const expected = testQuery.should_trigger ? skillName : "none";
-      const matched = testQuery.should_trigger ? decision === skillName : decision !== skillName;
-
-      return {
-        query: testQuery.query,
-        shouldTrigger: testQuery.should_trigger,
-        expected,
-        actual: decision,
-        matched,
+      return buildTriggerCaseResult({
+        testQuery,
+        skillName,
+        decision,
+        competitorNames,
         rawModelResponse: options.verbose ? rawResponse : undefined
-      };
+      });
     },
     options.concurrency ?? 5
   );
@@ -325,9 +445,10 @@ export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTest
     model: options.model,
     provider: options.provider.name,
     seed: options.seed,
+    competitors,
     queries,
     cases: results,
     metrics,
-    suggestions: buildSuggestions(metrics)
+    suggestions: buildSuggestions(skillName, metrics, results, competitors)
   };
 }

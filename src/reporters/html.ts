@@ -216,13 +216,13 @@ function renderLintIssueList(report: LintReport): string {
   return `<div class="row-list">${rows}</div>${info}`;
 }
 
-function renderTriggerCaseRow(testCase: TriggerTestCaseResult): string {
+function renderTriggerCaseRow(testCase: TriggerTestCaseResult, showSelectedCompetitor: boolean): string {
   const details = testCase.rawModelResponse
     ? renderDetails("Model response", renderPreBlock(testCase.rawModelResponse))
     : "";
 
   return `
-    <div class="row">
+    <div class="row${testCase.selectedCompetitor ? " competitor-selected" : ""}">
       <div class="row-header">
         <div>
           <div class="row-title">${escapeHtml(testCase.query)}</div>
@@ -234,11 +234,32 @@ function renderTriggerCaseRow(testCase: TriggerTestCaseResult): string {
       </div>
       ${renderDefinitionList([
         { label: "Expected", value: testCase.expected },
-        { label: "Actual", value: testCase.actual }
+        { label: "Actual", value: testCase.actual },
+        ...(showSelectedCompetitor ? [{ label: "Selected competitor", value: testCase.selectedCompetitor ?? "none" }] : [])
       ])}
       ${details}
     </div>
   `;
+}
+
+function renderCompetitorSkillsSection(result: TriggerTestResult): string {
+  if (!result.competitors || result.competitors.length === 0) {
+    return "";
+  }
+
+  return renderSectionCard(
+    "Competitor Skills",
+    `<div class="row-list">${result.competitors
+      .map((competitor) =>
+        renderMessageRow(
+          "warn",
+          competitor.name,
+          competitor.description,
+          renderDefinitionList([{ label: "Source", value: competitor.sourcePath }])
+        )
+      )
+      .join("")}</div>`
+  );
 }
 
 function promptStatus(promptResult: EvalPromptResult): HtmlStatus {
@@ -341,6 +362,7 @@ function renderHtmlDocument(title: string, body: string): string {
         --pass: #22c55e;
         --warn: #eab308;
         --fail: #ef4444;
+        --competitor: #f97316;
         --skip: #6b7280;
         --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
       }
@@ -487,6 +509,11 @@ function renderHtmlDocument(title: string, body: string): string {
         border-radius: 12px;
         padding: 14px;
         background: var(--surface-muted);
+      }
+
+      .row.competitor-selected {
+        border-color: rgba(249, 115, 22, 0.45);
+        background: rgba(249, 115, 22, 0.08);
       }
 
       .row-header {
@@ -671,6 +698,7 @@ export function renderTriggerHtml(result: TriggerTestResult): string {
   const target = resolveOptionalTarget(htmlResult, result.skillName);
   const matchedCount = result.cases.filter((testCase) => testCase.matched).length;
   const matchRate = result.cases.length === 0 ? 0 : matchedCount / result.cases.length;
+  const hasCompetitors = Boolean(result.competitors && result.competitors.length > 0);
   const body = [
     renderHeaderCard(
       "trigger",
@@ -686,10 +714,15 @@ export function renderTriggerHtml(result: TriggerTestResult): string {
         { label: "Provider", value: result.provider },
         { label: "Model", value: result.model },
         { label: "Seed", value: result.seed !== undefined ? String(result.seed) : "none" },
+        ...(hasCompetitors ? [{ label: "Competitors", value: String(result.competitors?.length ?? 0) }] : []),
         { label: "Queries", value: String(result.queries.length) }
       ]
     ),
-    renderSectionCard("Trigger Cases", `<div class="row-list">${result.cases.map((testCase) => renderTriggerCaseRow(testCase)).join("")}</div>`),
+    renderCompetitorSkillsSection(result),
+    renderSectionCard(
+      "Trigger Cases",
+      `<div class="row-list">${result.cases.map((testCase) => renderTriggerCaseRow(testCase, hasCompetitors)).join("")}</div>`
+    ),
     renderSectionCard(
       "Suggestions",
       `<ul>${result.suggestions.map((suggestion) => `<li>${escapeHtml(suggestion)}</li>`).join("")}</ul>`
@@ -734,7 +767,10 @@ export function renderEvalHtml(result: EvalResult): string {
 export function renderCheckHtml(result: CheckRunResult): string {
   const skillName = result.trigger?.skillName ?? result.eval?.skillName ?? result.target;
   const triggerBody = result.trigger
-    ? `<div class="row-list">${result.trigger.cases.map((testCase) => renderTriggerCaseRow(testCase)).join("")}</div>
+    ? `${renderCompetitorSkillsSection(result.trigger)}
+       <div class="row-list">${result.trigger.cases
+         .map((testCase) => renderTriggerCaseRow(testCase, Boolean(result.trigger?.competitors?.length)))
+         .join("")}</div>
        <div class="card" style="margin-top: 16px;">
          <h2>Trigger Suggestions</h2>
          <ul>${result.trigger.suggestions.map((suggestion) => `<li>${escapeHtml(suggestion)}</li>`).join("")}</ul>

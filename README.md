@@ -8,11 +8,15 @@ The testing framework for Agent Skills. Lint, test triggering, and evaluate your
 
 `skilltest` is a standalone CLI for the Agent Skills ecosystem (spec: https://agentskills.io). Think of it as pytest for skills.
 
+The repository itself uses a fast Vitest suite for offline unit and integration
+coverage of the parser, linters, trigger math, config resolution, reporters,
+and linter orchestration.
+
 ## Demo
 
 GIF coming soon.
 
-![skilltest demo placeholder](https://via.placeholder.com/1200x420?text=skilltest+demo+gif+coming+soon)
+<!-- ![skilltest demo placeholder](https://via.placeholder.com/1200x420?text=skilltest+demo+gif+coming+soon) -->
 
 ## Why skilltest?
 
@@ -375,6 +379,8 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci
+      - run: npm run lint
+      - run: npm run test
       - run: npm run build
       - run: npx skilltest lint path/to/skill --json
 ```
@@ -410,11 +416,15 @@ jobs:
 ```bash
 npm install
 npm run lint
+npm run test
 npm run build
 node dist/index.js --help
 ```
 
-Smoke tests:
+`npm test` runs the Vitest suite. The tests are offline and do not call model
+providers.
+
+Manual CLI smoke tests:
 
 ```bash
 node dist/index.js lint test-fixtures/sample-skill/

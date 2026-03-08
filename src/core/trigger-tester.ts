@@ -44,6 +44,11 @@ const triggerQuerySchema = z.object({
 });
 
 export const triggerQueryArraySchema = z.array(triggerQuerySchema);
+export const triggerNumQueriesSchema = z
+  .number()
+  .int()
+  .min(2)
+  .refine((value) => value % 2 === 0, "numQueries must be an even number.");
 
 const FAKE_SKILLS: Array<{ name: string; description: string }> = [
   { name: "code-review", description: "Reviews code changes for bugs, regressions, and maintainability issues." },
@@ -62,6 +67,13 @@ const FAKE_SKILLS: Array<{ name: string; description: string }> = [
   { name: "test-generator", description: "Generates unit and integration test cases from feature requirements." },
   { name: "prompt-tuner", description: "Improves prompts for reliability, formatting, and failure handling." }
 ];
+
+export interface PreparedTriggerQuery {
+  testQuery: TriggerQuery;
+  fakeSkills: Array<{ name: string; description: string }>;
+  allSkills: Array<{ name: string; description: string }>;
+  skillListText: string;
+}
 
 function mulberry32(seed: number): () => number {
   return () => {
@@ -90,6 +102,10 @@ function sample<T>(values: T[], count: number, rng: () => number): T[] {
   return shuffle(values, rng).slice(0, Math.max(0, Math.min(count, values.length)));
 }
 
+export function validateNumQueries(numQueries: number): number {
+  return triggerNumQueriesSchema.parse(numQueries);
+}
+
 function parseJsonArrayFromModelOutput(raw: string): unknown[] {
   const trimmed = raw.trim();
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
@@ -112,6 +128,7 @@ async function generateQueriesWithModel(
   model: string,
   numQueries: number
 ): Promise<TriggerQuery[]> {
+  validateNumQueries(numQueries);
   const shouldTriggerCount = Math.floor(numQueries / 2);
   const shouldNotTriggerCount = numQueries - shouldTriggerCount;
 
@@ -165,7 +182,37 @@ function parseDecision(rawResponse: string, skillNames: string[]): string {
   return "unrecognized";
 }
 
-function calculateMetrics(skillName: string, cases: TriggerTestCaseResult[]): TriggerMetrics {
+export function prepareTriggerQueries(
+  skill: Pick<ParsedSkill, "frontmatter">,
+  queries: TriggerQuery[],
+  seed?: number
+): PreparedTriggerQuery[] {
+  const rng = createRng(seed);
+
+  return queries.map((testQuery) => {
+    const fakeCount = 5 + Math.floor(rng() * 5);
+    const fakeSkills = sample(FAKE_SKILLS, fakeCount, rng);
+    const allSkills = shuffle(
+      [
+        ...fakeSkills,
+        {
+          name: skill.frontmatter.name,
+          description: skill.frontmatter.description
+        }
+      ],
+      rng
+    );
+
+    return {
+      testQuery,
+      fakeSkills,
+      allSkills,
+      skillListText: allSkills.map((entry) => `- ${entry.name}: ${entry.description}`).join("\n")
+    };
+  });
+}
+
+export function calculateMetrics(skillName: string, cases: TriggerTestCaseResult[]): TriggerMetrics {
   let truePositives = 0;
   let trueNegatives = 0;
   let falsePositives = 0;
@@ -232,33 +279,13 @@ export interface RunTriggerTestOptions {
 }
 
 export async function runTriggerTest(skill: ParsedSkill, options: RunTriggerTestOptions): Promise<TriggerTestResult> {
-  const rng = createRng(options.seed);
   const queries =
     options.queries && options.queries.length > 0
       ? triggerQueryArraySchema.parse(options.queries)
       : await generateQueriesWithModel(skill, options.provider, options.model, options.numQueries);
 
   const skillName = skill.frontmatter.name;
-  const preparedQueries = queries.map((testQuery) => {
-    const fakeCount = 5 + Math.floor(rng() * 5);
-    const fakeSkills = sample(FAKE_SKILLS, fakeCount, rng);
-    const allSkills = shuffle([
-      ...fakeSkills,
-      {
-        name: skill.frontmatter.name,
-        description: skill.frontmatter.description
-      }
-    ], rng);
-
-    const skillListText = allSkills.map((entry) => `- ${entry.name}: ${entry.description}`).join("\n");
-    return {
-      testQuery,
-      fakeCount,
-      fakeSkills,
-      allSkills,
-      skillListText
-    };
-  });
+  const preparedQueries = prepareTriggerQueries(skill, queries, options.seed);
 
   const systemPrompt = [
     "You are selecting one skill to activate for a user query.",

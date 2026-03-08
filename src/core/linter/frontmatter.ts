@@ -144,6 +144,25 @@ export function runFrontmatterChecks(context: LintContext): LintIssue[] {
     });
   }
 
+  if (context.frontmatter.rawFrontmatter && /[<>]/.test(context.frontmatter.rawFrontmatter)) {
+    issues.push({
+      id: "frontmatter.angle-brackets",
+      checkId: "frontmatter:angle-brackets",
+      title: "Frontmatter Angle Brackets",
+      status: "warn",
+      message: "Frontmatter contains angle bracket characters (< or >), which can be misinterpreted in some agents.",
+      suggestion: "Remove XML-like tags from frontmatter values when possible."
+    });
+  } else {
+    issues.push({
+      id: "frontmatter.angle-brackets",
+      checkId: "frontmatter:angle-brackets",
+      title: "Frontmatter Angle Brackets",
+      status: "pass",
+      message: "No angle bracket tokens detected in frontmatter."
+    });
+  }
+
   if (description && description.trim() !== "" && !descriptionLooksActionable(description)) {
     issues.push({
       id: "frontmatter.description.triggerability",

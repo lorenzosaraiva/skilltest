@@ -42,15 +42,23 @@ export interface GradeResponseOptions {
   assertions?: string[];
 }
 
-export async function gradeResponse(options: GradeResponseOptions): Promise<GradedAssertion[]> {
-  const assertionList =
-    options.assertions && options.assertions.length > 0
-      ? options.assertions
-      : [
-          "The response follows the skill instructions faithfully.",
-          "The response is well-structured and actionable.",
-          "The response addresses the user prompt directly."
-        ];
+const DEFAULT_ASSERTIONS = [
+  "The response follows the skill instructions faithfully.",
+  "The response is well-structured and actionable.",
+  "The response addresses the user prompt directly."
+];
+
+export interface GraderPrompts {
+  assertions: string[];
+  systemPrompt: string;
+  userPrompt: string;
+}
+
+export function buildGraderPrompts(
+  options: Omit<GradeResponseOptions, "provider" | "model">
+): GraderPrompts {
+  const assertions =
+    options.assertions && options.assertions.length > 0 ? options.assertions : DEFAULT_ASSERTIONS;
 
   const systemPrompt = [
     "You are a strict evaluator for agent skill outputs.",
@@ -69,10 +77,17 @@ export async function gradeResponse(options: GradeResponseOptions): Promise<Grad
     options.modelResponse,
     "",
     "Assertions to evaluate:",
-    assertionList.map((assertion, index) => `${index + 1}. ${assertion}`).join("\n")
+    assertions.map((assertion, index) => `${index + 1}. ${assertion}`).join("\n")
   ].join("\n");
 
-  const raw = await options.provider.sendMessage(systemPrompt, userPrompt, { model: options.model });
+  return {
+    assertions,
+    systemPrompt,
+    userPrompt
+  };
+}
+
+export function parseGraderOutput(raw: string): GradedAssertion[] {
   const parsed = graderOutputSchema.safeParse(extractJsonObject(raw));
 
   if (!parsed.success) {
@@ -80,4 +95,10 @@ export async function gradeResponse(options: GradeResponseOptions): Promise<Grad
   }
 
   return parsed.data.assertions;
+}
+
+export async function gradeResponse(options: GradeResponseOptions): Promise<GradedAssertion[]> {
+  const prompts = buildGraderPrompts(options);
+  const raw = await options.provider.sendMessage(prompts.systemPrompt, prompts.userPrompt, { model: options.model });
+  return parseGraderOutput(raw);
 }

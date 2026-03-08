@@ -20,7 +20,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "lint": "tsc --noEmit",
-    "test": "node dist/index.js lint test-fixtures/sample-skill"
+    "test": "vitest run"
   },
   "keywords": [
     "agent-skills",
@@ -46,6 +46,7 @@
     "@types/js-yaml": "4.0.9",
     "@types/node": "22.10.2",
     "tsup": "8.3.5",
-    "typescript": "5.7.2"
+    "typescript": "5.7.2",
+    "vitest": "^4.0.18"
   }
 }

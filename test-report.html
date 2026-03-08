@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>skilltest lint - test-fixtures/sample-skill/</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f5f5;
+        --surface: #ffffff;
+        --surface-muted: #fafafa;
+        --border: #d4d4d8;
+        --text: #111827;
+        --muted: #6b7280;
+        --pass: #22c55e;
+        --warn: #eab308;
+        --fail: #ef4444;
+        --skip: #6b7280;
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, #fafafa 0%, #f4f4f5 100%);
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        line-height: 1.5;
+      }
+
+      .container {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+      }
+
+      .card,
+      .section-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: var(--shadow);
+        margin-bottom: 16px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      .header-card h1,
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 1.25rem;
+      }
+
+      .eyebrow {
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .target-line,
+      .info-line {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .meta-grid,
+      .stats-grid,
+      .gate-grid,
+      .definition-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .meta-grid,
+      .gate-grid,
+      .definition-list {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        margin-top: 16px;
+      }
+
+      .meta-grid {
+        margin-top: 14px;
+      }
+
+      .meta-item,
+      .definition-item,
+      .stat-card,
+      .gate-card {
+        background: var(--surface-muted);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .meta-item,
+      .definition-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .meta-label,
+      .definition-label,
+      .stat-label {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .meta-value,
+      .definition-value {
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
+
+      .stat-value {
+        margin-top: 4px;
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+
+      .stat-note {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .status-pass {
+        border-color: rgba(34, 197, 94, 0.35);
+      }
+
+      .status-warn {
+        border-color: rgba(234, 179, 8, 0.35);
+      }
+
+      .status-fail {
+        border-color: rgba(239, 68, 68, 0.35);
+      }
+
+      .status-skip {
+        border-color: rgba(107, 114, 128, 0.35);
+      }
+
+      .row-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .row {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        background: var(--surface-muted);
+      }
+
+      .row-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .row-title {
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .row-subtitle {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.84rem;
+        overflow-wrap: anywhere;
+      }
+
+      .row-body {
+        margin-top: 10px;
+        overflow-wrap: anywhere;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 58px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid currentColor;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+
+      .badge.pass {
+        color: #15803d;
+        background: rgba(34, 197, 94, 0.14);
+      }
+
+      .badge.warn {
+        color: #a16207;
+        background: rgba(234, 179, 8, 0.18);
+      }
+
+      .badge.fail {
+        color: #b91c1c;
+        background: rgba(239, 68, 68, 0.14);
+      }
+
+      .badge.skip {
+        color: #4b5563;
+        background: rgba(107, 114, 128, 0.14);
+      }
+
+      details {
+        margin-top: 10px;
+      }
+
+      details summary {
+        cursor: pointer;
+        color: var(--muted);
+      }
+
+      .detail-block {
+        border-top: 1px dashed var(--border);
+        padding-top: 10px;
+      }
+
+      .detail-content p {
+        margin: 0;
+      }
+
+      .section-card summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 20px;
+        list-style: none;
+      }
+
+      .section-card summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .section-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .section-summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        text-align: right;
+      }
+
+      .section-body {
+        padding: 0 20px 20px;
+      }
+
+      .gate-grid {
+        margin-top: 12px;
+      }
+
+      pre {
+        margin: 0;
+        padding: 12px;
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+
+      @media (max-width: 720px) {
+        .container {
+          padding: 16px 12px 28px;
+        }
+
+        .row-header,
+        .section-card summary,
+        .meta-item,
+        .definition-item {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .meta-value,
+        .definition-value,
+        .section-summary {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      
+    <section class="card header-card">
+      <div class="eyebrow">skilltest lint</div>
+      <h1>Static Analysis Report</h1>
+      <div class="target-line">target: test-fixtures/sample-skill/</div>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Target</span>
+          <span class="meta-value">test-fixtures/sample-skill/</span>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Pass rate</div>
+          <div class="stat-value">100.0%</div>
+          <div class="stat-note">29/29 passed</div>
+        </div>
+      
+        <div class="stat-card status-pass">
+          <div class="stat-label">Warnings</div>
+          <div class="stat-value">0</div>
+          
+        </div>
+      
+        <div class="stat-card status-pass">
+          <div class="stat-label">Failures</div>
+          <div class="stat-value">0</div>
+          
+        </div>
+      
+        <div class="stat-card">
+          <div class="stat-label">Checks</div>
+          <div class="stat-value">29</div>
+          
+        </div>
+      </div>
+    </section>
+  
+    <section class="card">
+      <h2>Lint Issues</h2>
+      <div class="row-list">
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Frontmatter YAML</div>
+          <div class="row-subtitle">frontmatter:yaml</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Frontmatter exists and parses correctly.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">frontmatter:yaml</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Frontmatter Name</div>
+          <div class="row-subtitle">frontmatter:name</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">name is present and follows naming conventions.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">frontmatter:name</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Frontmatter Description</div>
+          <div class="row-subtitle">frontmatter:description</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">description is present and within allowed length.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">frontmatter:description</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Frontmatter License</div>
+          <div class="row-subtitle">frontmatter:license</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">license field is present.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">frontmatter:license</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Description Trigger Clarity</div>
+          <div class="row-subtitle">frontmatter:triggerability</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Description appears to cover both capability and usage context.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">frontmatter:triggerability</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">SKILL.md Size</div>
+          <div class="row-subtitle">structure:file-size</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">SKILL.md length is 37 lines.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">structure:file-size</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Reference File Navigation</div>
+          <div class="row-subtitle">structure:toc</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No oversized reference files missing a table of contents.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">structure:toc</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Script References</div>
+          <div class="row-subtitle">structure:references</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">All referenced scripts files exist.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">structure:references</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Reference File Links</div>
+          <div class="row-subtitle">structure:references</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">All referenced references files exist.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">structure:references</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Asset References</div>
+          <div class="row-subtitle">structure:references</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">All referenced assets files exist.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">structure:references</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Relative Links</div>
+          <div class="row-subtitle">structure:references</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No broken generic relative file references were found.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">structure:references</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Section Headers</div>
+          <div class="row-subtitle">content:headers</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">SKILL.md contains markdown section headers.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:headers</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Examples</div>
+          <div class="row-subtitle">content:examples</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Examples were detected in SKILL.md.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:examples</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Instruction Specificity</div>
+          <div class="row-subtitle">content:vagueness</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No obvious vague placeholder phrasing found.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:vagueness</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Frontmatter Angle Brackets</div>
+          <div class="row-subtitle">content:angle-brackets</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No angle bracket tokens detected in frontmatter.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:angle-brackets</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Hardcoded Secrets</div>
+          <div class="row-subtitle">content:secrets</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No obvious API keys or secrets patterns were detected.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:secrets</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Body Completeness</div>
+          <div class="row-subtitle">content:body-length</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">SKILL.md body has 20 non-empty lines.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:body-length</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Description Specificity</div>
+          <div class="row-subtitle">content:description-length</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Description length is sufficient for triggerability heuristics.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">content:description-length</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Dangerous Command Patterns</div>
+          <div class="row-subtitle">security:dangerous-commands</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No high-risk destructive or direct pipe-to-shell patterns detected.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">security:dangerous-commands</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Sensitive Data Exfiltration</div>
+          <div class="row-subtitle">security:exfiltration</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No obvious credential access/exfiltration instructions detected.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">security:exfiltration</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Privilege Escalation Language</div>
+          <div class="row-subtitle">security:privilege-escalation</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No obvious privilege-escalation language detected.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">security:privilege-escalation</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Execution Safety Guardrails</div>
+          <div class="row-subtitle">security:missing-guardrails</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Shell/tool execution instructions include at least one safety guardrail.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">security:missing-guardrails</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Progressive Disclosure</div>
+          <div class="row-subtitle">disclosure:progressive-disclosure</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Top-level file length and references/ usage look reasonable.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">disclosure:progressive-disclosure</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Reference Path Scope</div>
+          <div class="row-subtitle">disclosure:path-scope</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">All detected file references are relative and scoped to skill root.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">disclosure:path-scope</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Reference Chain Depth</div>
+          <div class="row-subtitle">disclosure:reference-depth</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Reference depth is shallow and easy to navigate.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">disclosure:reference-depth</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Parent Traversal</div>
+          <div class="row-subtitle">disclosure:parent-traversal</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No parent-directory traversal references detected.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">disclosure:parent-traversal</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Platform-Specific Frontmatter</div>
+          <div class="row-subtitle">compat:frontmatter</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">No known provider-specific frontmatter keys detected.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">compat:frontmatter</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Provider-Specific Language</div>
+          <div class="row-subtitle">compat:provider-language</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Skill body appears provider-neutral.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">compat:provider-language</div>
+        </div>
+      </div>
+      
+    </div>
+  
+    <div class="row">
+      <div class="row-header">
+        <div>
+          <div class="row-title">Compatibility Hint</div>
+          <div class="row-subtitle">compat:summary</div>
+        </div>
+        <span class="badge pass">PASS</span>
+      </div>
+      <div class="row-body">Likely broadly compatible across Anthropic, OpenAI/Codex-style, and other markdown skill runners.</div>
+      <div class="definition-list">
+        <div class="definition-item">
+          <div class="definition-label">Check ID</div>
+          <div class="definition-value">compat:summary</div>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+    </section>
+  
+    </main>
+  </body>
+</html>

@@ -2,10 +2,8 @@ import fs from "node:fs/promises";
 import ora from "ora";
 import { Command } from "commander";
 import { z } from "zod";
-import { runCheck } from "../core/check-runner.js";
+import { runImprove } from "../core/improver.js";
 import { createProvider } from "../providers/index.js";
-import { renderCheckHtml } from "../reporters/html.js";
-import { renderCheckReport } from "../reporters/terminal.js";
 import {
   getGlobalCliOptions,
   getResolvedConfig,
@@ -15,10 +13,10 @@ import {
   writeError,
   writeResult
 } from "./common.js";
+import { renderImproveReport } from "../reporters/terminal.js";
 import { writeJsonFile } from "../utils/fs.js";
 
-const checkCliSchema = z.object({
-  graderModel: z.string().optional(),
+const improveCliSchema = z.object({
   apiKey: z.string().optional(),
   queries: z.string().optional(),
   compare: z.array(z.string().min(1)).optional(),
@@ -26,21 +24,20 @@ const checkCliSchema = z.object({
   prompts: z.string().optional(),
   plugin: z.array(z.string().min(1)).optional(),
   concurrency: z.number().int().min(1).optional(),
-  html: z.string().optional(),
+  output: z.string().optional(),
   saveResults: z.string().optional(),
-  continueOnLintFail: z.boolean().optional(),
+  apply: z.boolean().optional(),
   verbose: z.boolean().optional()
 });
 
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 
-interface CheckCommandOptions {
+interface ImproveCommandOptions {
   json: boolean;
   color: boolean;
   provider: "anthropic" | "openai";
   model: string;
-  graderModel?: string;
   apiKey?: string;
   queries?: string;
   compare: string[];
@@ -51,13 +48,13 @@ interface CheckCommandOptions {
   numRuns: number;
   maxToolIterations: number;
   concurrency: number;
-  html?: string;
   lintFailOn: "error" | "warn";
   lintSuppress: string[];
   lintPlugins: string[];
   triggerSeed?: number;
+  output?: string;
   saveResults?: string;
-  continueOnLintFail: boolean;
+  apply: boolean;
   verbose: boolean;
 }
 
@@ -69,26 +66,12 @@ function resolveModel(provider: "anthropic" | "openai", model: string): string {
   if (provider === "openai" && model === DEFAULT_ANTHROPIC_MODEL) {
     return DEFAULT_OPENAI_MODEL;
   }
+
   return model;
 }
 
-function renderCheckOutputWithSeed(output: string, seed?: number): string {
-  if (seed === undefined) {
-    return output;
-  }
-
-  const lines = output.split("\n");
-  const triggerIndex = lines.indexOf("Trigger");
-  if (triggerIndex === -1) {
-    return `${output}\nSeed: ${seed}`;
-  }
-
-  lines.splice(triggerIndex + 1, 0, `Seed: ${seed}`);
-  return lines.join("\n");
-}
-
-async function handleCheckCommand(targetPath: string, options: CheckCommandOptions, command: Command): Promise<void> {
-  const spinner = options.json || !process.stdout.isTTY ? null : ora("Preparing check run...").start();
+async function handleImproveCommand(targetPath: string, options: ImproveCommandOptions, command: Command): Promise<void> {
+  const spinner = options.json || !process.stdout.isTTY ? null : ora("Preparing improvement run...").start();
 
   try {
     if (spinner) {
@@ -99,7 +82,7 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
     let queries = undefined;
     if (options.queries) {
       if (spinner) {
-        spinner.text = "Loading custom trigger queries...";
+        spinner.text = "Loading frozen trigger queries...";
       }
       queries = await loadTriggerQueriesFile(options.queries);
     }
@@ -115,37 +98,40 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
     }
 
     const model = resolveModel(options.provider, options.model);
-    const graderModel = options.graderModel ?? model;
-
-    const result = await runCheck(targetPath, {
+    const result = await runImprove(targetPath, {
       provider,
       model,
-      graderModel,
       lintFailOn: options.lintFailOn,
       lintSuppress: options.lintSuppress,
       lintPlugins: options.lintPlugins,
-      queries,
       compare: options.compare,
       numQueries: options.numQueries,
       triggerSeed: options.triggerSeed,
+      queries,
       prompts,
       evalNumRuns: options.numRuns,
       evalMaxToolIterations: options.maxToolIterations,
-      concurrency: options.concurrency,
       minF1: options.minF1,
       minAssertPassRate: options.minAssertPassRate,
-      continueOnLintFail: options.continueOnLintFail,
+      concurrency: options.concurrency,
+      apply: options.apply,
+      outputPath: options.output,
       verbose: options.verbose,
       onStage: (stage) => {
         if (!spinner) {
           return;
         }
-        if (stage === "lint") {
-          spinner.text = "Running lint checks...";
-        } else if (stage === "parse") {
-          spinner.text = "Parsing skill for model evaluations...";
-        } else if (stage === "trigger" || stage === "eval") {
-          spinner.text = "Running trigger and eval suites...";
+
+        if (stage === "baseline") {
+          spinner.text = "Running baseline check...";
+        } else if (stage === "generate") {
+          spinner.text = "Generating candidate rewrite...";
+        } else if (stage === "validate") {
+          spinner.text = "Validating candidate rewrite...";
+        } else if (stage === "verify") {
+          spinner.text = "Verifying candidate against frozen test inputs...";
+        } else if (stage === "write") {
+          spinner.text = options.apply ? "Writing improved SKILL.md..." : "Writing candidate output...";
         }
       }
     });
@@ -158,17 +144,10 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
     if (options.json) {
       writeResult(result, true);
     } else {
-      writeResult(
-        renderCheckOutputWithSeed(renderCheckReport(result, options.color, options.verbose), result.trigger?.seed),
-        false
-      );
+      writeResult(renderImproveReport(result, options.color, options.verbose), false);
     }
 
-    if (options.html) {
-      await fs.writeFile(options.html, renderCheckHtml(result), "utf8");
-    }
-
-    process.exitCode = result.gates.overallPassed ? 0 : 1;
+    process.exitCode = result.blockedReason ? 1 : 0;
   } catch (error) {
     spinner?.stop();
     writeError(error, options.json);
@@ -176,45 +155,45 @@ async function handleCheckCommand(targetPath: string, options: CheckCommandOptio
   }
 }
 
-export function registerCheckCommand(program: Command): void {
+export function registerImproveCommand(program: Command): void {
   program
-    .command("check")
-    .description("Run lint + trigger + eval with threshold-based quality gates.")
+    .command("improve")
+    .description("Rewrite SKILL.md, verify it on frozen test inputs, and optionally apply it.")
     .argument("<path-to-skill>", "Path to SKILL.md or skill directory")
     .option("--provider <provider>", "LLM provider: anthropic|openai")
-    .option("--model <model>", "Model for trigger/eval runs")
-    .option("--grader-model <model>", "Model used for grading (defaults to --model)")
+    .option("--model <model>", "Model for baseline, rewrite, and verification runs")
     .option("--api-key <key>", "API key override")
     .option("--queries <path>", "Path to custom trigger queries JSON")
     .option("--compare <path...>", "Path(s) to sibling skill directories to include as competitors")
     .option("--num-queries <n>", "Number of auto-generated trigger queries", (value) => Number.parseInt(value, 10))
-    .option("--seed <number>", "RNG seed for reproducible results", (value) => Number.parseInt(value, 10))
+    .option("--seed <number>", "RNG seed for reproducible trigger results", (value) => Number.parseInt(value, 10))
     .option("--prompts <path>", "Path to eval prompts JSON")
     .option("--plugin <path>", "Load a custom lint plugin file", collectPluginPaths, [])
     .option("--concurrency <n>", "Maximum in-flight trigger/eval tasks", (value) => Number.parseInt(value, 10))
-    .option("--html <path>", "Write an HTML report to the given file path")
+    .option("--output <path>", "Write the verified candidate SKILL.md to a separate file")
+    .option("--save-results <path>", "Save the full improve result JSON")
     .option("--min-f1 <n>", "Minimum required trigger F1 score (0-1)", (value) => Number.parseFloat(value))
-    .option("--min-assert-pass-rate <n>", "Minimum required eval assertion pass rate (0-1)", (value) => Number.parseFloat(value))
-    .option("--save-results <path>", "Save combined check results to JSON")
-    .option("--continue-on-lint-fail", "Continue trigger/eval stages even when lint has failures")
-    .option("--verbose", "Show detailed trigger/eval output sections")
+    .option("--min-assert-pass-rate <n>", "Minimum required eval assertion pass rate (0-1)", (value) =>
+      Number.parseFloat(value)
+    )
+    .option("--apply", "Apply the verified rewrite to the source SKILL.md")
+    .option("--verbose", "Include detailed baseline and verification reports")
     .action(async (targetPath: string, _commandOptions: unknown, command: Command) => {
       const globalOptions = getGlobalCliOptions(command);
       const config = getResolvedConfig(command);
-      const parsedCli = checkCliSchema.safeParse(command.opts());
+      const parsedCli = improveCliSchema.safeParse(command.opts());
       if (!parsedCli.success) {
-        writeError(new Error(parsedCli.error.issues[0]?.message ?? "Invalid check options."), globalOptions.json);
+        writeError(new Error(parsedCli.error.issues[0]?.message ?? "Invalid improve options."), globalOptions.json);
         process.exitCode = 2;
         return;
       }
 
-      await handleCheckCommand(
+      await handleImproveCommand(
         targetPath,
         {
           ...globalOptions,
           provider: config.provider,
           model: config.model,
-          graderModel: parsedCli.data.graderModel,
           apiKey: parsedCli.data.apiKey,
           queries: parsedCli.data.queries,
           compare: config.trigger.compare,
@@ -225,13 +204,13 @@ export function registerCheckCommand(program: Command): void {
           numRuns: config.eval.numRuns,
           maxToolIterations: config.eval.maxToolIterations,
           concurrency: config.concurrency,
-          html: parsedCli.data.html,
           lintFailOn: config.lint.failOn,
           lintSuppress: config.lint.suppress,
           lintPlugins: config.lint.plugins,
           triggerSeed: parsedCli.data.seed ?? config.trigger.seed,
+          output: parsedCli.data.output,
           saveResults: parsedCli.data.saveResults,
-          continueOnLintFail: Boolean(parsedCli.data.continueOnLintFail),
+          apply: Boolean(parsedCli.data.apply),
           verbose: Boolean(parsedCli.data.verbose)
         },
         command

@@ -131,7 +131,11 @@ export function parseFrontmatter(rawSkill: string): FrontmatterParseResult {
 
 export async function parseSkillStrict(inputPath: string): Promise<ParsedSkill> {
   const skillContext = await loadSkillFile(inputPath);
-  const parsedFrontmatter = parseFrontmatter(skillContext.raw);
+  return parseSkillDocumentStrict(skillContext.raw, skillContext.skillRoot, skillContext.skillFile);
+}
+
+export function parseSkillDocumentStrict(rawSkill: string, skillRoot: string, skillFile: string): ParsedSkill {
+  const parsedFrontmatter = parseFrontmatter(rawSkill);
 
   if (!parsedFrontmatter.hasFrontmatter) {
     throw new Error("SKILL.md is missing YAML frontmatter.");
@@ -148,9 +152,9 @@ export async function parseSkillStrict(inputPath: string): Promise<ParsedSkill> 
   }
 
   return {
-    skillRoot: skillContext.skillRoot,
-    skillFile: skillContext.skillFile,
-    raw: skillContext.raw,
+    skillRoot,
+    skillFile,
+    raw: rawSkill,
     content: parsedFrontmatter.content,
     frontmatterRaw: parsedFrontmatter.rawFrontmatter,
     frontmatter: validation.data

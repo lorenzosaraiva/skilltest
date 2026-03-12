@@ -19,11 +19,14 @@ The CLI is published as `skilltest` and built for `npx skilltest` usage.
 - `src/core/linter/`: lint check modules and orchestrator
 - `src/core/trigger-tester.ts`: query generation + trigger simulation + metrics
 - `src/core/eval-runner.ts`: prompt generation/loading + skill execution + grading loop
+- `src/core/tool-environment.ts`: mock tool environment + agentic loop for tool-aware eval
 - `src/core/check-runner.ts`: orchestrates lint + trigger + eval with threshold gates
 - `src/core/grader.ts`: structured grader prompt + JSON parse
-- `src/providers/`: LLM provider abstraction (`sendMessage`) and provider implementations
+- `src/providers/`: LLM provider abstraction (`sendMessage`, `sendWithTools`) and provider implementations
 - `src/reporters/`: terminal, JSON, and HTML output helpers
 - `src/utils/`: filesystem and API key config helpers
+
+Eval supports optional mock tool environments for testing skills that invoke tools.
 
 ## Build and Test Locally
 
@@ -68,6 +71,7 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 
 - Minimal provider interface:
   - `sendMessage(systemPrompt, userMessage, { model }) => Promise<string>`
+  - `sendWithTools(systemPrompt, messages, { model, tools }) => ProviderToolResponse`
 - Lint is fully offline and first-class.
 - Trigger/eval rely on the same provider abstraction.
 - `check` wraps lint + trigger + eval and enforces minimum thresholds:
@@ -78,6 +82,8 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
   - `--concurrency 1` preserves the old sequential behavior
   - trigger RNG-dependent fake-skill setup is precomputed before requests begin, preserving seed determinism
 - Comparative trigger testing is opt-in via `--compare`; standard fake-skill pool is the default.
+- Tool-aware eval uses mock responses only. No real tool execution happens during eval.
+- Tool assertions are evaluated structurally, without the grader model, so those checks stay deterministic.
 - JSON mode is strict:
   - no spinners
   - no colored output
@@ -106,5 +112,6 @@ ANTHROPIC_API_KEY=your-key node dist/index.js trigger test-fixtures/sample-skill
 - Compatibility hints: `src/core/linter/compat.ts`
 - Plugin loading + validation + rule execution: `src/core/linter/plugin.ts`
 - Trigger fake skill pool + comparative competitor loading + scoring: `src/core/trigger-tester.ts`
+- Mock tool environment + agentic loop: `src/core/tool-environment.ts`
 - Eval grading schema: `src/core/grader.ts`
 - Combined quality gate orchestration: `src/core/check-runner.ts`

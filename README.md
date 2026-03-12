@@ -4,19 +4,13 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![CI](https://img.shields.io/badge/ci-placeholder-lightgrey)](#cicd-integration)
 
-The testing framework for Agent Skills. Lint, test triggering, and evaluate your SKILL.md files.
+The testing framework for Agent Skills. Lint, test triggering, improve, and evaluate your `SKILL.md` files.
 
 `skilltest` is a standalone CLI for the Agent Skills ecosystem (spec: https://agentskills.io). Think of it as pytest for skills.
 
 The repository itself uses a fast Vitest suite for offline unit and integration
 coverage of the parser, linters, trigger math, config resolution, reporters,
 and linter orchestration.
-
-## Demo
-
-GIF coming soon.
-
-<!-- ![skilltest demo placeholder](https://via.placeholder.com/1200x420?text=skilltest+demo+gif+coming+soon) -->
 
 ## Why skilltest?
 
@@ -27,7 +21,7 @@ Agent Skills are quick to write but hard to validate before deployment:
 - You cannot easily measure trigger precision/recall.
 - You do not know whether outputs are good until users exercise the skill.
 
-`skilltest` closes this gap with one CLI and four modes.
+`skilltest` closes this gap with one CLI and five modes.
 
 ## Install
 
@@ -71,6 +65,18 @@ Run full quality gate:
 skilltest check ./path/to/skill --provider anthropic --min-f1 0.8 --min-assert-pass-rate 0.9
 ```
 
+Propose a verified rewrite without touching the source file:
+
+```bash
+skilltest improve ./path/to/skill --provider anthropic
+```
+
+Apply the verified rewrite in place:
+
+```bash
+skilltest improve ./path/to/skill --provider anthropic --apply
+```
+
 Write a self-contained HTML report:
 
 ```bash
@@ -80,8 +86,8 @@ skilltest check ./path/to/skill --html ./reports/check.html
 Model-backed commands default to `--concurrency 5`. Use `--concurrency 1` to force
 the old sequential execution order. Seeded trigger runs stay deterministic regardless
 of concurrency.
-All four commands also support `--html <path>` for an offline HTML report, and
-`--json` can be used with `--html` in the same run.
+`lint`, `trigger`, `eval`, and `check` support `--html <path>` for offline reports.
+`improve` is terminal/JSON only in v1.
 
 Example lint summary:
 
@@ -115,7 +121,8 @@ Example `.skilltestrc`:
   },
   "eval": {
     "numRuns": 5,
-    "threshold": 0.9
+    "threshold": 0.9,
+    "maxToolIterations": 10
   }
 }
 ```
@@ -309,6 +316,70 @@ Flags:
 - `--api-key <key>` explicit key override
 - `--verbose` show full model responses
 
+Config-only eval setting:
+
+- `eval.maxToolIterations` default: `10` safety cap for tool-aware eval loops
+
+### Tool-Aware Eval
+
+When an eval prompt defines `tools`, `skilltest` runs the prompt in a mock tool
+environment instead of plain text-only execution. The model can call the mocked
+tools during eval, and `skilltest` records the calls alongside the normal grader
+assertions.
+
+Tool responses are always mocked. `skilltest` does not execute real tools,
+scripts, shell commands, MCP servers, or APIs during eval.
+
+Example prompt file:
+
+```json
+[
+  {
+    "prompt": "Parse this deployment checklist and tell me what is missing.",
+    "assertions": ["output should mention the missing rollback plan"],
+    "tools": [
+      {
+        "name": "read_file",
+        "description": "Read a file from the workspace",
+        "parameters": [
+          { "name": "path", "type": "string", "description": "File path to read", "required": true }
+        ],
+        "responses": {
+          "{\"path\":\"checklist.md\"}": "# Deploy Checklist\n- [x] Migrations\n- [ ] Rollback plan\n- [x] Alerting",
+          "*": "[mock] File not found"
+        }
+      },
+      {
+        "name": "run_script",
+        "description": "Execute a shell script",
+        "parameters": [
+          { "name": "command", "type": "string", "description": "Command to run", "required": true }
+        ],
+        "responses": {
+          "*": "Script executed successfully. Output: 3 items checked, 1 missing."
+        }
+      }
+    ],
+    "toolAssertions": [
+      { "type": "tool_called", "toolName": "read_file", "description": "Model should read the checklist file" },
+      { "type": "tool_not_called", "toolName": "delete_file", "description": "Model should not delete any files" },
+      {
+        "type": "tool_argument_match",
+        "toolName": "read_file",
+        "expectedArgs": { "path": "checklist.md" },
+        "description": "Model should read checklist.md specifically"
+      }
+    ]
+  }
+]
+```
+
+Run it with:
+
+```bash
+skilltest eval ./my-skill --prompts ./eval-prompts.json
+```
+
 ### `skilltest check <path-to-skill>`
 
 Runs `lint + trigger + eval` in one command and applies quality thresholds.
@@ -340,6 +411,52 @@ Flags:
 - `--save-results <path>` save combined check result JSON
 - `--continue-on-lint-fail` continue trigger/eval even if lint fails
 - `--verbose` include detailed trigger/eval sections
+
+### `skilltest improve <path-to-skill>`
+
+Rewrites `SKILL.md`, verifies the rewrite on a frozen test set, and optionally
+applies it.
+
+Default behavior:
+
+1. Run a baseline `check` with `continue-on-lint-fail=true`.
+2. Freeze the exact trigger queries and eval prompts used in that baseline run.
+3. Ask the model for a structured JSON rewrite of `SKILL.md`.
+4. Rebuild and validate the candidate locally:
+   - must stay parseable
+   - must keep the same skill `name`
+   - must keep the current `license` when one already exists
+   - must not introduce broken relative references
+5. Verify the candidate by rerunning `check` against a copied skill directory with
+   the frozen trigger/eval inputs.
+6. Only write files when the candidate measurably improves the skill and passes the
+   configured quality gates.
+
+Flags:
+
+- `--provider <anthropic|openai>` default: `anthropic`
+- `--model <model>` default: `claude-sonnet-4-5-20250929` (auto-switches to `gpt-4.1-mini` for `--provider openai` when unchanged)
+- `--api-key <key>` explicit key override
+- `--queries <path>` custom trigger queries JSON
+- `--compare <path>` path to a sibling skill directory to use as a competitor (repeatable)
+- `--num-queries <n>` default: `20` (must be even when auto-generating)
+- `--seed <number>` RNG seed for reproducible trigger sampling
+- `--prompts <path>` custom eval prompts JSON
+- `--plugin <path>` load a custom lint plugin file (repeatable)
+- `--concurrency <n>` default: `5`
+- `--output <path>` write the verified candidate `SKILL.md` to a separate file
+- `--save-results <path>` save full improve result JSON
+- `--min-f1 <n>` default: `0.8`
+- `--min-assert-pass-rate <n>` default: `0.9`
+- `--apply` write the verified rewrite back to the source `SKILL.md`
+- `--verbose` include full baseline and verification reports
+
+Notes:
+
+- `improve` is dry-run by default.
+- `--apply` only writes when parse, lint, trigger, and eval verification all pass.
+- Before/after metrics are measured against the same generated or user-supplied
+  trigger queries and eval prompts, not a fresh sample.
 
 ## Global Flags
 
@@ -379,12 +496,56 @@ Eval prompts (`--prompts`):
 ]
 ```
 
+Tool-aware eval prompts (`--prompts`):
+
+```json
+[
+  {
+    "prompt": "Parse this deployment checklist and tell me what is missing.",
+    "assertions": ["output should mention remediation steps"],
+    "tools": [
+      {
+        "name": "read_file",
+        "description": "Read a file from the workspace",
+        "parameters": [
+          { "name": "path", "type": "string", "description": "File path to read", "required": true }
+        ],
+        "responses": {
+          "{\"path\":\"checklist.md\"}": "# Deploy Checklist\n- [x] Migrations\n- [ ] Rollback plan\n- [x] Alerting",
+          "*": "[mock] File not found"
+        }
+      },
+      {
+        "name": "run_script",
+        "description": "Execute a shell script",
+        "parameters": [
+          { "name": "command", "type": "string", "description": "Command to run", "required": true }
+        ],
+        "responses": {
+          "*": "Script executed successfully. Output: 3 items checked, 1 missing."
+        }
+      }
+    ],
+    "toolAssertions": [
+      { "type": "tool_called", "toolName": "read_file", "description": "Model should read the checklist file" },
+      { "type": "tool_not_called", "toolName": "delete_file", "description": "Model should not delete any files" },
+      {
+        "type": "tool_argument_match",
+        "toolName": "read_file",
+        "expectedArgs": { "path": "checklist.md" },
+        "description": "Model should read checklist.md specifically"
+      }
+    ]
+  }
+]
+```
+
 ## Output and Exit Codes
 
 Exit codes:
 
 - `0`: success
-- `1`: quality gate failed (`lint`, `check` thresholds, or command-specific failure conditions)
+- `1`: quality gate failed (`lint`, `check`, `improve` blocked, or other command-specific failure conditions)
 - `2`: runtime/config/API/parse error
 
 JSON mode examples:
@@ -394,6 +555,7 @@ skilltest lint ./skill --json
 skilltest trigger ./skill --json
 skilltest eval ./skill --json
 skilltest check ./skill --json
+skilltest improve ./skill --json
 ```
 
 HTML report examples:
@@ -525,6 +687,7 @@ node dist/index.js trigger test-fixtures/sample-skill/ --num-queries 2
 node dist/index.js trigger test-fixtures/sample-skill/ --queries path/to/queries.json --seed 123
 node dist/index.js eval test-fixtures/sample-skill/ --prompts test-fixtures/eval-prompts.json
 node dist/index.js check test-fixtures/sample-skill/ --num-queries 2 --prompts test-fixtures/eval-prompts.json
+node dist/index.js improve test-fixtures/sample-skill/ --num-queries 2 --prompts test-fixtures/eval-prompts.json
 ```
 
 ## Release Checklist

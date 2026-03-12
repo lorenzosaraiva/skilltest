@@ -48,6 +48,7 @@ export interface RunCheckOptions {
   queries?: TriggerQuery[];
   evalNumRuns: number;
   prompts?: EvalPrompt[];
+  evalMaxToolIterations: number;
   minF1: number;
   minAssertPassRate: number;
   continueOnLintFail: boolean;
@@ -103,7 +104,8 @@ export async function runCheck(inputPath: string, options: RunCheckOptions): Pro
         graderModel: options.graderModel,
         numRuns: options.evalNumRuns,
         prompts: options.prompts,
-        concurrency: options.concurrency
+        concurrency: options.concurrency,
+        maxToolIterations: options.evalMaxToolIterations
       };
 
       if ((options.concurrency ?? 5) === 1) {

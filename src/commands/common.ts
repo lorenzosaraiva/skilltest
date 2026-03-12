@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { Command } from "commander";
 import { z } from "zod";
-import { EvalPrompt, evalPromptArraySchema } from "../core/eval-runner.js";
+import { EvalPrompt, evalPromptArraySchema, evalPromptSchema } from "../core/eval-runner.js";
 import { TriggerQuery, triggerQueryArraySchema } from "../core/trigger-tester.js";
 import { renderJson } from "../reporters/json.js";
 import { ResolvedConfigContext } from "../utils/config.js";
@@ -9,10 +9,7 @@ import { readJsonFile } from "../utils/fs.js";
 
 const executionContextByCommand = new WeakMap<Command, ResolvedConfigContext>();
 
-const singleEvalPromptSchema = z.object({
-  prompt: z.string().min(1),
-  assertions: z.array(z.string().min(1)).optional()
-});
+const singleEvalPromptSchema = evalPromptSchema;
 
 const promptStringArraySchema = z.array(z.string().min(1));
 const assertionsObjectSchema = z.object({
@@ -62,6 +59,27 @@ function parseAssertionsFromText(raw: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, ""))
     .filter((line) => line.length > 0);
+}
+
+function cloneEvalPrompt(prompt: EvalPrompt): EvalPrompt {
+  return {
+    prompt: prompt.prompt,
+    assertions: prompt.assertions ? [...prompt.assertions] : undefined,
+    tools: prompt.tools
+      ? prompt.tools.map((tool) => ({
+          ...tool,
+          parameters: tool.parameters ? tool.parameters.map((parameter) => ({ ...parameter })) : undefined,
+          responses: { ...tool.responses }
+        }))
+      : undefined,
+    toolAssertions: prompt.toolAssertions
+      ? prompt.toolAssertions.map((toolAssertion) => ({
+          ...toolAssertion,
+          toolNames: toolAssertion.toolNames ? [...toolAssertion.toolNames] : undefined,
+          expectedArgs: toolAssertion.expectedArgs ? { ...toolAssertion.expectedArgs } : undefined
+        }))
+      : undefined
+  };
 }
 
 function normalizeAssertions(value: unknown, sourceLabel: string): string[] {
@@ -151,7 +169,7 @@ export async function loadConfiguredEvalPrompts(command: Command): Promise<EvalP
     const assertionsRaw = await fs.readFile(assertionsFile, "utf8");
     const assertions = normalizeAssertions(parseJsonIfPossible(assertionsRaw), assertionsFile);
     prompts = prompts.map((prompt) => ({
-      prompt: prompt.prompt,
+      ...cloneEvalPrompt(prompt),
       assertions: [...assertions]
     }));
   }
@@ -159,10 +177,7 @@ export async function loadConfiguredEvalPrompts(command: Command): Promise<EvalP
   const numRunsWasExplicit = context.configFile?.eval?.numRuns !== undefined;
   if (numRunsWasExplicit && prompts.length === 1 && context.config.eval.numRuns > 1) {
     const promptTemplate = prompts[0];
-    prompts = Array.from({ length: context.config.eval.numRuns }, () => ({
-      prompt: promptTemplate.prompt,
-      assertions: promptTemplate.assertions ? [...promptTemplate.assertions] : undefined
-    }));
+    prompts = Array.from({ length: context.config.eval.numRuns }, () => cloneEvalPrompt(promptTemplate));
   }
 
   return prompts;

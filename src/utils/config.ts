@@ -36,7 +36,8 @@ const evalConfigSchema = z
     numRuns: z.number().int().min(1).optional(),
     threshold: z.number().min(0).max(1).optional(),
     promptFile: z.string().min(1).optional(),
-    assertionsFile: z.string().min(1).optional()
+    assertionsFile: z.string().min(1).optional(),
+    maxToolIterations: z.number().int().min(1).max(50).optional()
   })
   .strict()
   .partial();
@@ -73,7 +74,8 @@ const resolvedSkilltestConfigSchema = z.object({
     numRuns: z.number().int().min(1),
     threshold: z.number().min(0).max(1),
     promptFile: z.string().min(1).optional(),
-    assertionsFile: z.string().min(1).optional()
+    assertionsFile: z.string().min(1).optional(),
+    maxToolIterations: z.number().int().min(1).max(50)
   })
 });
 
@@ -111,7 +113,8 @@ export const DEFAULT_SKILLTEST_CONFIG: ResolvedSkilltestConfig = {
   },
   eval: {
     numRuns: 5,
-    threshold: 0.9
+    threshold: 0.9,
+    maxToolIterations: 10
   }
 };
 
@@ -266,7 +269,11 @@ export function mergeConfigLayers(
       assertionsFile: resolveConfigRelativePath(
         baseDirectory,
         cliFlags.eval?.assertionsFile ?? configFile.eval?.assertionsFile ?? DEFAULT_SKILLTEST_CONFIG.eval.assertionsFile
-      )
+      ),
+      maxToolIterations:
+        cliFlags.eval?.maxToolIterations ??
+        configFile.eval?.maxToolIterations ??
+        DEFAULT_SKILLTEST_CONFIG.eval.maxToolIterations
     }
   };
 
@@ -298,41 +305,53 @@ export function extractCliConfigOverrides(command: Command): SkilltestConfigFile
   }
 
   if (
-    (command.name() === "trigger" || command.name() === "eval" || command.name() === "check") &&
+    (command.name() === "trigger" || command.name() === "eval" || command.name() === "check" || command.name() === "improve") &&
     command.getOptionValueSource("concurrency") === "cli"
   ) {
     overrides.concurrency = getTypedOptionValue<number>(command, "concurrency");
   }
 
-  if ((command.name() === "trigger" || command.name() === "check") && command.getOptionValueSource("numQueries") === "cli") {
+  if (
+    (command.name() === "trigger" || command.name() === "check" || command.name() === "improve") &&
+    command.getOptionValueSource("numQueries") === "cli"
+  ) {
     overrides.trigger = {
       ...overrides.trigger,
       numQueries: getTypedOptionValue<number>(command, "numQueries")
     };
   }
 
-  if ((command.name() === "trigger" || command.name() === "check") && command.getOptionValueSource("compare") === "cli") {
+  if (
+    (command.name() === "trigger" || command.name() === "check" || command.name() === "improve") &&
+    command.getOptionValueSource("compare") === "cli"
+  ) {
     overrides.trigger = {
       ...overrides.trigger,
       compare: getTypedOptionValue<string[]>(command, "compare")
     };
   }
 
-  if ((command.name() === "lint" || command.name() === "check") && command.getOptionValueSource("plugin") === "cli") {
+  if (
+    (command.name() === "lint" || command.name() === "check" || command.name() === "improve") &&
+    command.getOptionValueSource("plugin") === "cli"
+  ) {
     overrides.lint = {
       ...overrides.lint,
       plugins: getTypedOptionValue<string[]>(command, "plugin")
     };
   }
 
-  if (command.name() === "check" && command.getOptionValueSource("minF1") === "cli") {
+  if ((command.name() === "check" || command.name() === "improve") && command.getOptionValueSource("minF1") === "cli") {
     overrides.trigger = {
       ...overrides.trigger,
       threshold: getTypedOptionValue<number>(command, "minF1")
     };
   }
 
-  if (command.name() === "check" && command.getOptionValueSource("minAssertPassRate") === "cli") {
+  if (
+    (command.name() === "check" || command.name() === "improve") &&
+    command.getOptionValueSource("minAssertPassRate") === "cli"
+  ) {
     overrides.eval = {
       ...overrides.eval,
       threshold: getTypedOptionValue<number>(command, "minAssertPassRate")

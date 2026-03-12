@@ -42,6 +42,7 @@ interface EvalCommandOptions {
   apiKey?: string;
   numRuns: number;
   concurrency: number;
+  maxToolIterations: number;
   html?: string;
 }
 
@@ -87,7 +88,8 @@ async function handleEvalCommand(targetPath: string, options: EvalCommandOptions
       graderModel,
       numRuns: options.numRuns,
       concurrency: options.concurrency,
-      prompts
+      prompts,
+      maxToolIterations: options.maxToolIterations
     });
 
     if (options.saveResults) {
@@ -152,7 +154,8 @@ export function registerEvalCommand(program: Command): void {
           verbose: Boolean(parsedCli.data.verbose),
           apiKey: parsedCli.data.apiKey,
           numRuns: config.eval.numRuns,
-          concurrency: config.concurrency
+          concurrency: config.concurrency,
+          maxToolIterations: config.eval.maxToolIterations
         },
         command
       );

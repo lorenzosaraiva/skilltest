@@ -41,6 +41,23 @@ function createLintCommand(argv: string[]): Command {
   return command;
 }
 
+function createImproveCommand(argv: string[]): Command {
+  const command = new Command("improve");
+  command.option("--provider <provider>");
+  command.option("--model <model>");
+  command.option("--compare <path...>");
+  command.option("--num-queries <n>", "Number of generated queries", (value: string) => Number.parseInt(value, 10));
+  command.option("--concurrency <n>", "Maximum concurrency", (value: string) => Number.parseInt(value, 10));
+  command.option("--plugin <path>", "Load a custom lint plugin file", (value: string, previous: string[] = []) => [
+    ...previous,
+    value
+  ], []);
+  command.option("--min-f1 <n>", "Minimum F1", (value: string) => Number.parseFloat(value));
+  command.option("--min-assert-pass-rate <n>", "Minimum assertion pass rate", (value: string) => Number.parseFloat(value));
+  command.parse(argv, { from: "user" });
+  return command;
+}
+
 afterEach(async () => {
   process.chdir(originalCwd);
   await Promise.all(tempDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })));
@@ -70,6 +87,9 @@ describe("config utilities", () => {
             threshold: 0.75,
             seed: 42,
             compare: ["../similar-skill"]
+          },
+          eval: {
+            maxToolIterations: 7
           }
         },
         null,
@@ -88,6 +108,7 @@ describe("config utilities", () => {
     expect(context.config.trigger.numQueries).toBe(12);
     expect(context.config.trigger.seed).toBe(42);
     expect(context.config.trigger.compare).toEqual([path.resolve(skillRoot, "..", "similar-skill")]);
+    expect(context.config.eval.maxToolIterations).toBe(7);
   });
 
   it("lets CLI flags override config values", () => {
@@ -147,6 +168,59 @@ describe("config utilities", () => {
     ]);
   });
 
+  it("supports improve command overrides for thresholds, plugins, compare paths, and concurrency", () => {
+    const overrides = extractCliConfigOverrides(
+      createImproveCommand([
+        "--provider",
+        "openai",
+        "--model",
+        "gpt-4.1-mini",
+        "--compare",
+        "./peer-skill",
+        "--num-queries",
+        "16",
+        "--concurrency",
+        "2",
+        "--plugin",
+        "./org-rule.mjs",
+        "--min-f1",
+        "0.9",
+        "--min-assert-pass-rate",
+        "0.95"
+      ])
+    );
+
+    const merged = mergeConfigLayers(
+      {
+        provider: "anthropic",
+        model: "claude-sonnet-4-5-20250929",
+        concurrency: 5,
+        lint: {
+          plugins: ["./config-rule.mjs"]
+        },
+        trigger: {
+          numQueries: 20,
+          threshold: 0.8,
+          compare: ["./config-peer"]
+        },
+        eval: {
+          threshold: 0.9
+        }
+      },
+      overrides,
+      path.resolve(process.cwd(), "fixtures")
+    );
+
+    expect(merged.provider).toBe("openai");
+    expect(merged.model).toBe("gpt-4.1-mini");
+    expect(merged.concurrency).toBe(2);
+    expect(merged.trigger.numQueries).toBe(16);
+    expect(merged.trigger.threshold).toBe(0.9);
+    expect(merged.eval.threshold).toBe(0.95);
+    expect(merged.trigger.compare).toEqual([path.resolve(process.cwd(), "fixtures", "peer-skill")]);
+    expect(merged.lint.plugins).toEqual([path.resolve(process.cwd(), "fixtures", "org-rule.mjs")]);
+  });
+
   it("falls back to defaults when no config file exists", async () => {
     const directory = await createTempDirectory();
     process.chdir(directory);
@@ -155,5 +229,6 @@ describe("config utilities", () => {
 
     expect(context.sourcePath).toBeNull();
     expect(context.config).toMatchObject(DEFAULT_SKILLTEST_CONFIG);
+    expect(context.config.eval.maxToolIterations).toBe(10);
   });
 });

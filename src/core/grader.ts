@@ -5,6 +5,7 @@ export interface GradedAssertion {
   assertion: string;
   passed: boolean;
   evidence: string;
+  source?: "grader" | "tool";
 }
 
 const gradedAssertionSchema = z.object({
@@ -100,5 +101,8 @@ export function parseGraderOutput(raw: string): GradedAssertion[] {
 export async function gradeResponse(options: GradeResponseOptions): Promise<GradedAssertion[]> {
   const prompts = buildGraderPrompts(options);
   const raw = await options.provider.sendMessage(prompts.systemPrompt, prompts.userPrompt, { model: options.model });
-  return parseGraderOutput(raw);
+  return parseGraderOutput(raw).map((assertion) => ({
+    ...assertion,
+    source: "grader"
+  }));
 }

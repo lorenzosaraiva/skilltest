@@ -3,6 +3,7 @@ import { LintIssue, LintReport } from "../core/linter/index.js";
 import { TriggerTestResult } from "../core/trigger-tester.js";
 import { EvalResult } from "../core/eval-runner.js";
 import { CheckRunResult } from "../core/check-runner.js";
+import { ImproveRunResult } from "../core/improver.js";
 
 function getChalkInstance(enableColor: boolean): ChalkInstance {
   return new Chalk({ level: enableColor ? 1 : 0 });
@@ -26,6 +27,85 @@ function countSkippedSecurityPatterns(issues: LintIssue[]): number {
 
 function formatPercent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatSignedNumber(value: number, digits = 4): string {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value.toFixed(digits)}`;
+}
+
+function diffChangedLines(beforeText: string, afterText: string): Array<{ type: "+" | "-"; line: string }> {
+  const beforeLines = beforeText.split(/\r?\n/);
+  const afterLines = afterText.split(/\r?\n/);
+  const dp = Array.from({ length: beforeLines.length + 1 }, () => Array<number>(afterLines.length + 1).fill(0));
+
+  for (let beforeIndex = beforeLines.length - 1; beforeIndex >= 0; beforeIndex -= 1) {
+    for (let afterIndex = afterLines.length - 1; afterIndex >= 0; afterIndex -= 1) {
+      if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
+        dp[beforeIndex]![afterIndex] = 1 + (dp[beforeIndex + 1]![afterIndex + 1] ?? 0);
+      } else {
+        dp[beforeIndex]![afterIndex] = Math.max(dp[beforeIndex + 1]![afterIndex] ?? 0, dp[beforeIndex]![afterIndex + 1] ?? 0);
+      }
+    }
+  }
+
+  const changedLines: Array<{ type: "+" | "-"; line: string }> = [];
+  let beforeIndex = 0;
+  let afterIndex = 0;
+
+  while (beforeIndex < beforeLines.length && afterIndex < afterLines.length) {
+    if (beforeLines[beforeIndex] === afterLines[afterIndex]) {
+      beforeIndex += 1;
+      afterIndex += 1;
+      continue;
+    }
+
+    const skipBefore = dp[beforeIndex + 1]![afterIndex] ?? 0;
+    const skipAfter = dp[beforeIndex]![afterIndex + 1] ?? 0;
+    if (skipBefore >= skipAfter) {
+      changedLines.push({ type: "-", line: beforeLines[beforeIndex] ?? "" });
+      beforeIndex += 1;
+    } else {
+      changedLines.push({ type: "+", line: afterLines[afterIndex] ?? "" });
+      afterIndex += 1;
+    }
+  }
+
+  while (beforeIndex < beforeLines.length) {
+    changedLines.push({ type: "-", line: beforeLines[beforeIndex] ?? "" });
+    beforeIndex += 1;
+  }
+
+  while (afterIndex < afterLines.length) {
+    changedLines.push({ type: "+", line: afterLines[afterIndex] ?? "" });
+    afterIndex += 1;
+  }
+
+  return changedLines;
+}
+
+function renderDiffPreview(beforeText: string, afterText: string, maxLines = 40): string[] {
+  const changedLines = diffChangedLines(beforeText, afterText);
+  if (changedLines.length === 0) {
+    return ["  (no content changes)"];
+  }
+
+  const previewLines = changedLines.slice(0, maxLines).map((entry) => `  ${entry.type} ${entry.line}`);
+  if (changedLines.length > maxLines) {
+    previewLines.push(`  ... ${changedLines.length - maxLines} more changed line(s)`);
+  }
+  return previewLines;
+}
+
+function summarizeToolCalls(toolCalls: NonNullable<EvalResult["results"][number]["toolCalls"]>): string {
+  const counts = new Map<string, number>();
+  for (const toolCall of toolCalls) {
+    counts.set(toolCall.name, (counts.get(toolCall.name) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([name, count]) => `${name} x${count}`)
+    .join(", ");
 }
 
 export function renderLintReport(report: LintReport, enableColor: boolean): string {
@@ -99,12 +179,25 @@ export function renderEvalReport(result: EvalResult, enableColor: boolean, verbo
   for (const [index, promptResult] of result.results.entries()) {
     lines.push(`${index + 1}. prompt: ${promptResult.prompt}`);
     lines.push(`   response summary: ${promptResult.responseSummary.replace(/\s+/g, " ").trim()}`);
+    if (promptResult.toolCalls) {
+      lines.push(`   Tools: ${promptResult.toolCalls.length} calls (${summarizeToolCalls(promptResult.toolCalls)})`);
+      if (promptResult.loopIterations !== undefined) {
+        lines.push(`   loop iterations: ${promptResult.loopIterations}`);
+      }
+    }
     for (const assertion of promptResult.assertions) {
       const status = assertion.passed ? c.green("PASS") : c.red("FAIL");
       lines.push(`   ${status} ${assertion.assertion}`);
       lines.push(`      evidence: ${assertion.evidence}`);
     }
     if (verbose) {
+      if (promptResult.toolCalls) {
+        for (const toolCall of promptResult.toolCalls) {
+          lines.push(`   tool ${toolCall.turnIndex}: ${toolCall.name}`);
+          lines.push(`      arguments: ${JSON.stringify(toolCall.arguments)}`);
+          lines.push(`      response: ${toolCall.response}`);
+        }
+      }
       lines.push(`   full response: ${promptResult.response}`);
     }
   }
@@ -193,6 +286,12 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
       }
       lines.push(`  - prompt: ${promptResult.prompt}`);
       lines.push(`    response summary: ${promptResult.responseSummary.replace(/\s+/g, " ").trim()}`);
+      if (promptResult.toolCalls) {
+        lines.push(`    Tools: ${promptResult.toolCalls.length} calls (${summarizeToolCalls(promptResult.toolCalls)})`);
+        if (promptResult.loopIterations !== undefined) {
+          lines.push(`    loop iterations: ${promptResult.loopIterations}`);
+        }
+      }
       const assertionsToRender = verbose ? promptResult.assertions : failedAssertions;
       for (const assertion of assertionsToRender) {
         const assertionStatus = assertion.passed ? c.green("PASS") : c.red("FAIL");
@@ -200,6 +299,13 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
         lines.push(`      evidence: ${assertion.evidence}`);
       }
       if (verbose) {
+        if (promptResult.toolCalls) {
+          for (const toolCall of promptResult.toolCalls) {
+            lines.push(`    tool ${toolCall.turnIndex}: ${toolCall.name}`);
+            lines.push(`      arguments: ${JSON.stringify(toolCall.arguments)}`);
+            lines.push(`      response: ${toolCall.response}`);
+          }
+        }
         lines.push(`    full response: ${promptResult.response}`);
       }
     }
@@ -213,6 +319,83 @@ export function renderCheckReport(result: CheckRunResult, enableColor: boolean, 
   lines.push(`- trigger gate: ${triggerGate}`);
   lines.push(`- eval gate: ${evalGate}`);
   lines.push(`- overall: ${overallGate}`);
+
+  return lines.join("\n");
+}
+
+export function renderImproveReport(result: ImproveRunResult, enableColor: boolean, verbose = false): string {
+  const c = getChalkInstance(enableColor);
+  const lines: string[] = [
+    "skilltest improve",
+    `target: ${result.target}`,
+    `provider/model: ${result.provider}/${result.model}`,
+    `thresholds: min-f1=${result.thresholds.minF1.toFixed(2)} min-assert-pass-rate=${result.thresholds.minAssertPassRate.toFixed(2)}`
+  ];
+
+  const statusLabel = result.blockedReason ? c.red("BLOCKED") : result.applied ? c.green("APPLIED") : c.green("VERIFIED");
+  lines.push(`status: ${statusLabel}`);
+
+  if (result.candidate) {
+    lines.push("");
+    lines.push("Change Summary");
+    for (const item of result.candidate.changeSummary) {
+      lines.push(`- ${item}`);
+    }
+
+    lines.push("");
+    lines.push("Targeted Problems");
+    for (const item of result.candidate.targetedProblems) {
+      lines.push(`- ${item}`);
+    }
+  }
+
+  if (result.delta && result.verification) {
+    lines.push("");
+    lines.push("Before / After");
+    lines.push(
+      `- lint failures: ${result.delta.lintFailures.before} -> ${result.delta.lintFailures.after} (${formatSignedNumber(result.delta.lintFailures.delta, 0)})`
+    );
+    lines.push(
+      `- lint warnings: ${result.delta.lintWarnings.before} -> ${result.delta.lintWarnings.after} (${formatSignedNumber(result.delta.lintWarnings.delta, 0)})`
+    );
+    lines.push(
+      `- trigger f1: ${formatPercent(result.delta.triggerF1.before)} -> ${formatPercent(result.delta.triggerF1.after)} (${formatSignedNumber(result.delta.triggerF1.delta)})`
+    );
+    lines.push(
+      `- eval assertion pass rate: ${formatPercent(result.delta.evalAssertPassRate.before)} -> ${formatPercent(result.delta.evalAssertPassRate.after)} (${formatSignedNumber(result.delta.evalAssertPassRate.delta)})`
+    );
+    lines.push(
+      `- overall gate: ${result.delta.overallPassed.before ? c.green("PASS") : c.red("FAIL")} -> ${result.delta.overallPassed.after ? c.green("PASS") : c.red("FAIL")}`
+    );
+  }
+
+  if (result.outputPath) {
+    lines.push("");
+    lines.push(`output: ${result.outputPath}`);
+  }
+
+  if (result.blockedReason) {
+    lines.push("");
+    lines.push("Blocked");
+    lines.push(`- ${result.blockedReason}`);
+  }
+
+  if (result.candidate) {
+    lines.push("");
+    lines.push("Diff Preview");
+    lines.push(...renderDiffPreview(result.originalRaw, result.candidate.raw));
+  }
+
+  if (verbose) {
+    lines.push("");
+    lines.push("Baseline");
+    lines.push(renderCheckReport(result.baseline, enableColor, true));
+    if (result.verification) {
+      lines.push("");
+      lines.push("Verification");
+      lines.push(renderCheckReport(result.verification, enableColor, true));
+    }
+  }
 
   return lines.join("\n");
 }

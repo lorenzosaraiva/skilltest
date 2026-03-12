@@ -59,6 +59,10 @@ function renderBadge(status: HtmlStatus): string {
   return `<span class="badge ${status}">${badgeLabel(status)}</span>`;
 }
 
+function renderMetaBadge(label: string): string {
+  return `<span class="meta-badge">${escapeHtml(label)}</span>`;
+}
+
 function renderStatCards(stats: StatCard[]): string {
   return `<div class="stats-grid">${stats
     .map(
@@ -276,10 +280,42 @@ function promptStatus(promptResult: EvalPromptResult): HtmlStatus {
 }
 
 function renderAssertionRow(assertion: EvalPromptResult["assertions"][number]): string {
-  return renderDetails(
-    `${badgeLabel(assertion.passed ? "pass" : "fail")} ${assertion.assertion}`,
-    renderPreBlock(assertion.evidence)
-  );
+  return `
+    <details class="detail-block">
+      <summary>
+        ${renderBadge(assertion.passed ? "pass" : "fail")}
+        ${assertion.source === "tool" ? renderMetaBadge("Tool") : ""}
+        <span>${escapeHtml(assertion.assertion)}</span>
+      </summary>
+      <div class="detail-content">${renderPreBlock(assertion.evidence)}</div>
+    </details>
+  `;
+}
+
+function renderToolCallsSection(promptResult: EvalPromptResult): string {
+  if (!promptResult.toolCalls || promptResult.toolCalls.length === 0) {
+    return "";
+  }
+
+  const toolRows = promptResult.toolCalls
+    .map(
+      (toolCall) => `
+        <div class="tool-call">
+          <div class="row-header">
+            <div>
+              <div class="row-title">${escapeHtml(toolCall.name)}</div>
+              <div class="row-subtitle">${escapeHtml(`turn ${toolCall.turnIndex}`)}</div>
+            </div>
+            ${renderMetaBadge("Tool Call")}
+          </div>
+          ${renderDefinitionList([{ label: "Arguments", value: JSON.stringify(toolCall.arguments) }])}
+          ${renderDetails("Mock response", renderPreBlock(toolCall.response))}
+        </div>
+      `
+    )
+    .join("");
+
+  return renderDetails("Tool Calls", `<div class="tool-call-list">${toolRows}</div>`);
 }
 
 function renderEvalPromptRow(promptResult: EvalPromptResult): string {
@@ -300,9 +336,12 @@ function renderEvalPromptRow(promptResult: EvalPromptResult): string {
       <div class="row-body">${escapeHtml(promptResult.responseSummary)}</div>
       ${renderDefinitionList([
         { label: "Passed assertions", value: String(promptResult.passedAssertions) },
-        { label: "Total assertions", value: String(promptResult.totalAssertions) }
+        { label: "Total assertions", value: String(promptResult.totalAssertions) },
+        ...(promptResult.toolCalls ? [{ label: "Tool calls", value: String(promptResult.toolCalls.length) }] : []),
+        ...(promptResult.loopIterations !== undefined ? [{ label: "Loop iterations", value: String(promptResult.loopIterations) }] : [])
       ])}
       ${renderDetails("Assertion evidence", assertionDetails || `<p>No assertions.</p>`)}
+      ${renderToolCallsSection(promptResult)}
       ${responseDetails}
     </div>
   `;
@@ -574,6 +613,20 @@ function renderHtmlDocument(title: string, body: string): string {
         background: rgba(107, 114, 128, 0.14);
       }
 
+      .meta-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(17, 24, 39, 0.16);
+        background: rgba(17, 24, 39, 0.06);
+        color: var(--text);
+        font-size: 0.76rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
       details {
         margin-top: 10px;
       }
@@ -586,6 +639,13 @@ function renderHtmlDocument(title: string, body: string): string {
       .detail-block {
         border-top: 1px dashed var(--border);
         padding-top: 10px;
+      }
+
+      .detail-block summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
       }
 
       .detail-content p {
@@ -636,6 +696,18 @@ function renderHtmlDocument(title: string, body: string): string {
         white-space: pre-wrap;
         word-break: break-word;
         overflow-wrap: anywhere;
+      }
+
+      .tool-call-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .tool-call {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        background: #fffaf0;
       }
 
       ul {

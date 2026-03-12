@@ -6,6 +6,7 @@ import { registerLintCommand } from "./commands/lint.js";
 import { registerTriggerCommand } from "./commands/trigger.js";
 import { registerEvalCommand } from "./commands/eval.js";
 import { registerCheckCommand } from "./commands/check.js";
+import { registerImproveCommand } from "./commands/improve.js";
 import { setCommandExecutionContext } from "./commands/common.js";
 import { extractCliConfigOverrides, resolveConfigContext } from "./utils/config.js";
 
@@ -55,6 +56,7 @@ export async function run(argv: string[]): Promise<void> {
   registerTriggerCommand(program);
   registerEvalCommand(program);
   registerCheckCommand(program);
+  registerImproveCommand(program);
 
   try {
     await program.parseAsync(argv);

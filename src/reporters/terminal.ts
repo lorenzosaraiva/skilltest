@@ -4,6 +4,7 @@ import { TriggerTestResult } from "../core/trigger-tester.js";
 import { EvalResult } from "../core/eval-runner.js";
 import { CheckRunResult } from "../core/check-runner.js";
 import { ImproveRunResult } from "../core/improver.js";
+import { RouteTestResult } from "../core/route-tester.js";
 
 function getChalkInstance(enableColor: boolean): ChalkInstance {
   return new Chalk({ level: enableColor ? 1 : 0 });
@@ -394,6 +395,80 @@ export function renderImproveReport(result: ImproveRunResult, enableColor: boole
       lines.push("");
       lines.push("Verification");
       lines.push(renderCheckReport(result.verification, enableColor, true));
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function renderRouteReport(result: RouteTestResult, enableColor: boolean, verbose: boolean): string {
+  const c = getChalkInstance(enableColor);
+  const lines: string[] = [
+    "skilltest route",
+    `directory: ${result.skillDir}`,
+    `provider/model: ${result.provider}/${result.model}`,
+    `skills: ${result.skills.length}  queries per skill: ${result.numQueriesPerSkill}`
+  ];
+
+  lines.push("");
+  lines.push("Per-skill metrics:");
+  for (const m of result.perSkillMetrics) {
+    const badge = m.f1 >= 0.8 ? c.green("PASS") : c.yellow("WARN");
+    lines.push(
+      `  ${m.skill.padEnd(24)} F1: ${formatPercent(m.f1).padEnd(7)}  precision: ${formatPercent(m.precision).padEnd(7)}  recall: ${formatPercent(m.recall)}  [${badge}]`
+    );
+  }
+
+  lines.push("");
+  lines.push("Routing matrix (% of row queries routed to column):");
+  const colHeaders = [...result.skills, "none"];
+  const colWidth = 10;
+  const rowLabelWidth = 24;
+  const headerRow = "".padEnd(rowLabelWidth) + colHeaders.map((h) => h.slice(0, colWidth - 1).padEnd(colWidth)).join("");
+  lines.push("  " + headerRow);
+  for (const targetSkill of result.skills) {
+    const rowLabel = ("  " + targetSkill).padEnd(rowLabelWidth);
+    const cells = colHeaders
+      .map((col) => {
+        const pct = result.matrixPct[targetSkill]?.[col] ?? 0;
+        const formatted = formatPercent(pct).padEnd(colWidth);
+        if (col === targetSkill) return c.green(formatted);
+        if (pct > 0.1) return c.yellow(formatted);
+        return formatted;
+      })
+      .join("");
+    lines.push(rowLabel + cells);
+  }
+
+  if (result.conflicts.length > 0) {
+    lines.push("");
+    lines.push("Conflicts detected:");
+    for (const conflict of result.conflicts) {
+      lines.push(
+        `  ${conflict.skillA} <-> ${conflict.skillB}  ${formatPercent(conflict.bleedAtoB)} / ${formatPercent(conflict.bleedBtoA)} bleed  [${c.yellow("WARN")}]`
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push(`Overall accuracy: ${formatPercent(result.overallAccuracy)}`);
+
+  lines.push("");
+  lines.push("Suggestions:");
+  for (const suggestion of result.suggestions) {
+    lines.push(`- ${suggestion}`);
+  }
+
+  if (verbose) {
+    lines.push("");
+    lines.push("Cases:");
+    for (const [index, testCase] of result.cases.entries()) {
+      const status = testCase.correct ? c.green("PASS") : c.red("FAIL");
+      lines.push(`  ${index + 1}. ${status} [${testCase.targetSkill}] ${testCase.query}`);
+      lines.push(`     routed to: ${testCase.actualSkill}`);
+      if (testCase.rawModelResponse) {
+        lines.push(`     model: ${testCase.rawModelResponse.replace(/\s+/g, " ").trim()}`);
+      }
     }
   }
 

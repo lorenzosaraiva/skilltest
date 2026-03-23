@@ -2,6 +2,7 @@ import { CheckRunResult } from "../core/check-runner.js";
 import { EvalPromptResult, EvalResult } from "../core/eval-runner.js";
 import { LintIssue, LintReport } from "../core/linter/index.js";
 import { TriggerTestCaseResult, TriggerTestResult } from "../core/trigger-tester.js";
+import { RouteTestResult } from "../core/route-tester.js";
 
 type HtmlStatus = "pass" | "warn" | "fail" | "skip";
 
@@ -939,4 +940,96 @@ export function renderCheckHtml(result: CheckRunResult): string {
   );
 
   return renderHtmlDocument(`skilltest check - ${skillName}`, [header, lintSection, triggerSection, evalSection, qualityGate].join(""));
+}
+
+function renderRouteMatrix(result: RouteTestResult): string {
+  const cols = [...result.skills, "none"];
+  const headerCells = cols.map((col) => `<th>${escapeHtml(col)}</th>`).join("");
+  const rows = result.skills
+    .map((target) => {
+      const cells = cols
+        .map((col) => {
+          const pct = result.matrixPct[target]?.[col] ?? 0;
+          const isDiag = col === target;
+          const bg = isDiag
+            ? "background:rgba(34,197,94,0.18);"
+            : pct > 0.15
+            ? "background:rgba(239,68,68,0.18);"
+            : pct > 0.05
+            ? "background:rgba(234,179,8,0.12);"
+            : "";
+          return `<td style="${bg}">${escapeHtml(formatPercent(pct))}</td>`;
+        })
+        .join("");
+      return `<tr><th>${escapeHtml(target)}</th>${cells}</tr>`;
+    })
+    .join("");
+  return `<style>.rt{border-collapse:collapse;font-size:.85rem;width:100%}.rt th,.rt td{border:1px solid #d4d4d8;padding:8px 12px;text-align:center}.rt thead th{background:#fafafa;font-weight:700}</style><div style="overflow-x:auto"><table class="rt"><thead><tr><th></th>${headerCells}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+export function renderRouteHtml(result: RouteTestResult): string {
+  const conflictCount = result.conflicts.length;
+  const overallStatus: HtmlStatus = result.overallAccuracy >= 0.8 ? "pass" : "warn";
+  const conflictStatus: HtmlStatus = conflictCount === 0 ? "pass" : "warn";
+
+  const header = renderHeaderCard(
+    "route",
+    `Routing Report — ${result.skills.length} skills`,
+    result.skillDir,
+    [
+      { label: "Overall accuracy", value: formatPercent(result.overallAccuracy), status: overallStatus },
+      { label: "Conflicts", value: String(conflictCount), status: conflictStatus },
+      { label: "Skills", value: String(result.skills.length) },
+      { label: "Queries/skill", value: String(result.numQueriesPerSkill) }
+    ],
+    [
+      { label: "Provider", value: result.provider },
+      { label: "Model", value: result.model },
+      { label: "Seed", value: result.seed !== undefined ? String(result.seed) : "none" }
+    ]
+  );
+
+  const matrixSection = renderSectionCard("Routing Matrix", renderRouteMatrix(result));
+
+  const metricsRows = result.perSkillMetrics
+    .map((m) => {
+      const status: HtmlStatus = m.f1 >= 0.8 ? "pass" : "warn";
+      return renderMessageRow(
+        status,
+        m.skill,
+        `F1: ${formatPercent(m.f1)}  precision: ${formatPercent(m.precision)}  recall: ${formatPercent(m.recall)}`,
+        renderDefinitionList([
+          { label: "Queries", value: String(m.queriesTotal) },
+          { label: "Correct", value: String(m.correct) },
+          { label: "Precision", value: formatPercent(m.precision) },
+          { label: "Recall", value: formatPercent(m.recall) }
+        ])
+      );
+    })
+    .join("");
+  const metricsSection = renderSectionCard("Per-Skill Metrics", `<div class="row-list">${metricsRows}</div>`);
+
+  let conflictsSection = "";
+  if (result.conflicts.length > 0) {
+    const conflictRows = result.conflicts
+      .map((conflict) =>
+        renderMessageRow(
+          "warn",
+          `${escapeHtml(conflict.skillA)} \u2194 ${escapeHtml(conflict.skillB)}`,
+          `${formatPercent(conflict.bleedAtoB)} of ${escapeHtml(conflict.skillA)} queries routed to ${escapeHtml(conflict.skillB)}; ${formatPercent(conflict.bleedBtoA)} the other way`
+        )
+      )
+      .join("");
+    conflictsSection = renderSectionCard("Conflicts", `<div class="row-list">${conflictRows}</div>`);
+  }
+
+  const suggestionsSection = renderSectionCard(
+    "Suggestions",
+    `<ul>${result.suggestions.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`
+  );
+
+  return renderHtmlDocument(
+    `skilltest route — ${result.skillDir}`,
+    [header, matrixSection, metricsSection, conflictsSection, suggestionsSection].join("")
+  );
 }

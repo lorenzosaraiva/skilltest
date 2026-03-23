@@ -305,7 +305,7 @@ export function extractCliConfigOverrides(command: Command): SkilltestConfigFile
   }
 
   if (
-    (command.name() === "trigger" || command.name() === "eval" || command.name() === "check" || command.name() === "improve") &&
+    (command.name() === "trigger" || command.name() === "eval" || command.name() === "check" || command.name() === "improve" || command.name() === "route") &&
     command.getOptionValueSource("concurrency") === "cli"
   ) {
     overrides.concurrency = getTypedOptionValue<number>(command, "concurrency");
